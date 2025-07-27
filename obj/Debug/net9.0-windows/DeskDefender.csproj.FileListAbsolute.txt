@@ -162,3 +162,4 @@ C:\Users\blanc\CascadeProjects\DeskDefender\DeskDefender\obj\Debug\net9.0-window
 C:\Users\blanc\CascadeProjects\DeskDefender\DeskDefender\obj\Debug\net9.0-windows\DeskDefender.pdb
 C:\Users\blanc\CascadeProjects\DeskDefender\DeskDefender\obj\Debug\net9.0-windows\DeskDefender.genruntimeconfig.cache
 C:\Users\blanc\CascadeProjects\DeskDefender\DeskDefender\obj\Debug\net9.0-windows\ref\DeskDefender.dll
+C:\Users\blanc\CascadeProjects\DeskDefender\DeskDefender\obj\Debug\net9.0-windows\DeskDefender.sourcelink.json

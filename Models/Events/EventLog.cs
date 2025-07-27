@@ -53,14 +53,5 @@ namespace DeskDefender.Models.Events
         public string Source { get; set; }
     }
 
-    /// <summary>
-    /// Severity levels for events
-    /// </summary>
-    public enum EventSeverity
-    {
-        Info = 0,
-        Warning = 1,
-        Critical = 2,
-        Emergency = 3
-    }
+    // EventSeverity enum is defined in EventSeverity.cs to avoid duplication
 }

@@ -15,6 +15,11 @@ namespace DeskDefender.Interfaces
         event EventHandler<MotionDetectedEventArgs> MotionDetected;
 
         /// <summary>
+        /// Event fired when a frame is captured from the camera
+        /// </summary>
+        event EventHandler<Bitmap> FrameCaptured;
+
+        /// <summary>
         /// Captures a single frame from the camera
         /// </summary>
         /// <returns>Captured image as Bitmap</returns>
