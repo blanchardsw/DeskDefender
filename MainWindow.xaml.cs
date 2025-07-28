@@ -69,6 +69,10 @@ namespace DeskDefender
             SensitivityValue.Text = _settings.MotionSensitivity.ToString("F1");
             _uiUpdateTimer.Start();
             _ = LoadEventLogAsync();
+            
+            // Event subscription is now handled by EventCoordinatorService
+            // which was started during application initialization
+            
             _isInitialized = true;
         }
 
@@ -248,10 +252,45 @@ namespace DeskDefender
             }
         }
 
+
+        private void OnEventReceived(object sender, EventLog eventLog)
+        {
+            try
+            {
+                // Update UI on the UI thread
+                Dispatcher.BeginInvoke(() =>
+                {
+                    var displayModel = new EventDisplayModel(eventLog);
+                    
+                    // Add to recent events (limit to 10 most recent)
+                    _recentEvents.Insert(0, displayModel);
+                    while (_recentEvents.Count > 10)
+                    {
+                        _recentEvents.RemoveAt(_recentEvents.Count - 1);
+                    }
+                    
+                    // Add to full event log
+                    _eventLog.Insert(0, displayModel);
+                    
+                    _logger.LogInformation("Event added to UI: {EventType} - {Description}", eventLog.EventType, eventLog.Description);
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling received event");
+            }
+        }
+
         protected override void OnClosing(CancelEventArgs e)
         {
             try
             {
+                // Stop monitoring service
+                if (_monitoringService is DeskDefender.Services.CompositeMonitoringService compositeService)
+                {
+                    _logger.LogInformation("Stopping monitoring service");
+                }
+                
                 if (_monitoringService.IsRunning)
                 {
                     _monitoringService.Stop();

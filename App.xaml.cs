@@ -60,6 +60,12 @@ namespace DeskDefender
                 InitializeDatabase();
                 Console.WriteLine("[DEBUG] Database initialized successfully.");
 
+                // Start event coordination system
+                Console.WriteLine("[DEBUG] Starting event coordination system...");
+                var eventCoordinator = _serviceProvider.GetRequiredService<EventCoordinatorService>();
+                eventCoordinator.Start();
+                Console.WriteLine("[DEBUG] Event coordination system started successfully.");
+
                 // Create and show main window
                 Console.WriteLine("[DEBUG] Creating main window...");
                 var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
@@ -124,6 +130,10 @@ namespace DeskDefender
         {
             try
             {
+                // Stop event coordination system
+                var eventCoordinator = _serviceProvider?.GetService<EventCoordinatorService>();
+                eventCoordinator?.Stop();
+
                 // Stop any running monitoring services
                 var monitoringService = _serviceProvider?.GetService<IMonitorService>();
                 if (monitoringService?.IsRunning == true)
@@ -133,6 +143,9 @@ namespace DeskDefender
 
                 // Dispose of the host
                 _host?.Dispose();
+                
+                // Free console
+                FreeConsole();
             }
             catch (Exception ex)
             {
@@ -161,7 +174,7 @@ namespace DeskDefender
                     {
                         builder.AddConsole();
                         builder.AddDebug();
-                        builder.SetMinimumLevel(LogLevel.Information);
+                        builder.SetMinimumLevel(LogLevel.Debug); // Enable debug logging for diagnostics
                     });
 
                     // Database
@@ -175,6 +188,10 @@ namespace DeskDefender
                     });
 
                     // Core Services - Register interfaces with implementations
+                    services.AddSingleton<EventBatchingService>();
+                    services.AddSingleton<EventDisplayService>();
+                    services.AddSingleton<EventConfigurationService>();
+                    services.AddSingleton<EventCoordinatorService>();
                     services.AddSingleton<IInputMonitor, WindowsInputMonitor>();
                     services.AddSingleton<ICameraService, OpenCvCameraService>();
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
@@ -212,7 +229,7 @@ namespace DeskDefender
 
                     // Sensitivity Settings
                     MotionSensitivity = 0.5,
-                    InputSensitivityThreshold = TimeSpan.FromSeconds(30),
+                    InputSensitivityThreshold = TimeSpan.FromSeconds(5), // Reduced from 30 to 5 seconds for better responsiveness
 
                     // Storage Settings
                     LogRetentionDays = 30,

@@ -25,6 +25,7 @@ namespace DeskDefender.Services
     /// Windows-specific implementation of input monitoring using low-level hooks
     /// Implements the Observer pattern to notify subscribers of input events
     /// Uses Windows API hooks to capture system-wide keyboard and mouse activity
+    /// Now integrates with EventBatchingService for summarized event reporting
     /// </summary>
     public class WindowsInputMonitor : IInputMonitor
     {
@@ -66,6 +67,17 @@ namespace DeskDefender.Services
             public uint dwTime;
         }
 
+        // Structure for keyboard input data
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KBDLLHOOKSTRUCT
+        {
+            public uint vkCode;
+            public uint scanCode;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
         // Delegate for low-level hook procedures
         private delegate IntPtr LowLevelHookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -74,10 +86,13 @@ namespace DeskDefender.Services
         #region Private Fields
 
         private readonly ILogger<WindowsInputMonitor> _logger;
-        private IntPtr _keyboardHookId = IntPtr.Zero;
-        private IntPtr _mouseHookId = IntPtr.Zero;
+        private readonly EventBatchingService _batchingService;
+        
+        // Hook-related fields
         private LowLevelHookProc _keyboardProc;
         private LowLevelHookProc _mouseProc;
+        private IntPtr _keyboardHookId = IntPtr.Zero;
+        private IntPtr _mouseHookId = IntPtr.Zero;
         
         // Monitoring state management
         private bool _isMonitoring = false;
@@ -89,7 +104,12 @@ namespace DeskDefender.Services
         private double _mouseMovementDistance = 0;
         private DateTime _sessionStartTime;
         private DateTime _lastInputTime;
-        private TimeSpan _sensitivityThreshold = TimeSpan.FromSeconds(30);
+        private DateTime _lastEventTime;
+        private TimeSpan _sensitivityThreshold = TimeSpan.FromSeconds(5); // Reduced from 30 to 5 seconds
+        
+        // Performance optimization for mouse movement
+        private DateTime _lastMouseMoveTime;
+        private readonly TimeSpan _mouseMoveThrottle = TimeSpan.FromMilliseconds(100); // Only process mouse moves every 100ms
 
         // Performance optimization - track mouse position for distance calculation
         private System.Drawing.Point _lastMousePosition;
@@ -100,18 +120,20 @@ namespace DeskDefender.Services
 
         /// <summary>
         /// Initializes a new instance of the WindowsInputMonitor
-        /// Uses dependency injection to receive logger instance
+        /// Uses dependency injection to receive logger and batching service instances
         /// </summary>
         /// <param name="logger">Logger instance for diagnostic and debugging information</param>
-        public WindowsInputMonitor(ILogger<WindowsInputMonitor> logger)
+        /// <param name="batchingService">Service for batching and summarizing events</param>
+        public WindowsInputMonitor(ILogger<WindowsInputMonitor> logger, EventBatchingService batchingService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _batchingService = batchingService ?? throw new ArgumentNullException(nameof(batchingService));
             
             // Initialize hook procedures - these must be kept alive to prevent garbage collection
             _keyboardProc = KeyboardHookProc;
             _mouseProc = MouseHookProc;
             
-            _logger.LogInformation("WindowsInputMonitor initialized");
+            _logger.LogInformation("WindowsInputMonitor initialized with event batching");
         }
 
         #endregion
@@ -183,26 +205,64 @@ namespace DeskDefender.Services
 
                 try
                 {
-                    // Install low-level hooks for keyboard and mouse
-                    _keyboardHookId = SetHook(_keyboardProc, WH_KEYBOARD_LL);
-                    _mouseHookId = SetHook(_mouseProc, WH_MOUSE_LL);
-
-                    if (_keyboardHookId == IntPtr.Zero || _mouseHookId == IntPtr.Zero)
+                    _logger.LogInformation("Installing input monitoring hooks...");
+                    
+                    // Ensure hooks are installed on the UI thread
+                    if (System.Windows.Application.Current?.Dispatcher != null)
                     {
-                        throw new InvalidOperationException("Failed to install input hooks");
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            // Install low-level hooks for keyboard and mouse
+                            _keyboardHookId = SetHook(_keyboardProc, WH_KEYBOARD_LL);
+                            _logger.LogDebug("Keyboard hook installed: {HookId}", _keyboardHookId);
+                            
+                            _mouseHookId = SetHook(_mouseProc, WH_MOUSE_LL);
+                            _logger.LogDebug("Mouse hook installed: {HookId}", _mouseHookId);
+                        });
+                    }
+                    else
+                    {
+                        // Fallback if no dispatcher available
+                        _keyboardHookId = SetHook(_keyboardProc, WH_KEYBOARD_LL);
+                        _logger.LogDebug("Keyboard hook installed: {HookId}", _keyboardHookId);
+                        
+                        _mouseHookId = SetHook(_mouseProc, WH_MOUSE_LL);
+                        _logger.LogDebug("Mouse hook installed: {HookId}", _mouseHookId);
+                    }
+
+                    if (_keyboardHookId == IntPtr.Zero)
+                    {
+                        var error = Marshal.GetLastWin32Error();
+                        throw new InvalidOperationException($"Failed to install keyboard hook. Win32 Error: {error}");
+                    }
+                    
+                    if (_mouseHookId == IntPtr.Zero)
+                    {
+                        var error = Marshal.GetLastWin32Error();
+                        throw new InvalidOperationException($"Failed to install mouse hook. Win32 Error: {error}");
                     }
 
                     _isMonitoring = true;
                     _sessionStartTime = DateTime.UtcNow;
                     _lastInputTime = DateTime.UtcNow;
+                    _lastEventTime = DateTime.UtcNow;
+                    
+                    // Start the event batching service
+                    _batchingService.Start();
+                    
                     StatusChanged?.Invoke(this, true);
+                    
+                    _logger.LogInformation("Input monitoring started successfully with {SensitivityThreshold} sensitivity", _sensitivityThreshold);
+                    
+                    // Test hook functionality immediately
+                    _logger.LogInformation("Hook installation complete. Please move mouse or press keys to test...");
                     
                     // Reset counters for new session
                     _keystrokeCount = 0;
                     _mouseClickCount = 0;
                     _mouseMovementDistance = 0;
 
-                    _logger.LogInformation("Input monitoring started successfully");
+                    _logger.LogInformation("Input monitoring and event batching started successfully");
                 }
                 catch (Exception ex)
                 {
@@ -228,7 +288,10 @@ namespace DeskDefender.Services
 
                 try
                 {
-                    // Generate final input event before stopping
+                    // Stop the event batching service first
+                    _batchingService.Stop();
+
+                    // Generate final input event before stopping (legacy compatibility)
                     if (_keystrokeCount > 0 || _mouseClickCount > 0)
                     {
                         GenerateInputEvent();
@@ -269,17 +332,37 @@ namespace DeskDefender.Services
 
         /// <summary>
         /// Low-level keyboard hook procedure
-        /// Processes keyboard events and updates tracking counters
+        /// Processes keyboard events and sends them to the batching service
         /// </summary>
         private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
+            try
             {
-                _keystrokeCount++;
-                _lastInputTime = DateTime.UtcNow;
+                _logger.LogDebug("[HOOK] Keyboard hook procedure called - nCode: {nCode}, wParam: {wParam}", nCode, wParam);
                 
-                // Check if we should generate an event based on sensitivity threshold
-                CheckAndGenerateEvent();
+                if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
+                {
+                    // Extract key information from the hook data
+                    var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+                    var virtualKeyCode = (int)hookStruct.vkCode;
+                    var timestamp = DateTime.UtcNow;
+                    
+                    // Send individual key event to batching service
+                    _batchingService.AddKeyboardEvent(virtualKeyCode, timestamp);
+                    
+                    // Update legacy counters for compatibility
+                    _keystrokeCount++;
+                    _lastInputTime = timestamp;
+                    
+                    _logger.LogDebug("[INPUT] Keyboard input detected: VK_{VirtualKeyCode:X2}", virtualKeyCode);
+                    
+                    // Legacy event generation (still needed for compatibility)
+                    CheckAndGenerateEvent();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in keyboard hook procedure");
             }
 
             return CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
@@ -287,33 +370,90 @@ namespace DeskDefender.Services
 
         /// <summary>
         /// Low-level mouse hook procedure
-        /// Processes mouse events and calculates movement distance
+        /// Processes mouse events and sends them to the batching service
         /// </summary>
         private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0)
+            try
             {
-                if (wParam == (IntPtr)WM_LBUTTONDOWN || wParam == (IntPtr)WM_RBUTTONDOWN)
+                _logger.LogDebug("[HOOK] Mouse hook procedure called - nCode: {nCode}, wParam: {wParam}", nCode, wParam);
+                
+                if (nCode >= 0)
                 {
-                    _mouseClickCount++;
-                    _lastInputTime = DateTime.UtcNow;
                     // Get cursor position using Windows API
                     POINT cursorPos;
                     GetCursorPos(out cursorPos);
+                    var timestamp = DateTime.UtcNow;
                     
-                    // Calculate mouse movement distance for behavior analysis
-                    var currentPosition = new Point(cursorPos.X, cursorPos.Y);
-                    if (_lastMousePosition != Point.Empty)
+                    if (wParam == (IntPtr)WM_LBUTTONDOWN)
                     {
-                        var deltaX = currentPosition.X - _lastMousePosition.X;
-                        var deltaY = currentPosition.Y - _lastMousePosition.Y;
-                        _mouseMovementDistance += Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+                        // Send left click event to batching service
+                        _batchingService.AddMouseEvent(MouseEventType.LeftClick, cursorPos.X, cursorPos.Y, timestamp);
+                        
+                        // Update legacy counters
+                        _mouseClickCount++;
+                        _lastInputTime = timestamp;
+                        
+                        _logger.LogDebug("[INPUT] Left mouse click detected at ({X}, {Y})", cursorPos.X, cursorPos.Y);
+                        CheckAndGenerateEvent();
                     }
-                    
-                    _lastMousePosition = currentPosition;
-                    _lastInputTime = DateTime.UtcNow;
-                    CheckAndGenerateEvent();
+                    else if (wParam == (IntPtr)WM_RBUTTONDOWN)
+                    {
+                        // Send right click event to batching service
+                        _batchingService.AddMouseEvent(MouseEventType.RightClick, cursorPos.X, cursorPos.Y, timestamp);
+                        
+                        // Update legacy counters
+                        _mouseClickCount++;
+                        _lastInputTime = timestamp;
+                        
+                        _logger.LogDebug("[INPUT] Right mouse click detected at ({X}, {Y})", cursorPos.X, cursorPos.Y);
+                        CheckAndGenerateEvent();
+                    }
+                    else if (wParam == (IntPtr)WM_MOUSEMOVE)
+                    {
+                        // Throttle mouse movement processing to prevent performance issues
+                        if (timestamp - _lastMouseMoveTime < _mouseMoveThrottle)
+                        {
+                            return CallNextHookEx(_mouseHookId, nCode, wParam, lParam); // Skip processing
+                        }
+                        
+                        _lastMouseMoveTime = timestamp;
+                        
+                        // Calculate movement distance for legacy compatibility
+                        var currentPosition = new Point(cursorPos.X, cursorPos.Y);
+                        if (_lastMousePosition != Point.Empty)
+                        {
+                            var deltaX = currentPosition.X - _lastMousePosition.X;
+                            var deltaY = currentPosition.Y - _lastMousePosition.Y;
+                            var distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+                            
+                            // Only track significant movements (> 5 pixels)
+                            if (distance > 5)
+                            {
+                                // Send mouse movement event to batching service
+                                _batchingService.AddMouseEvent(MouseEventType.Move, cursorPos.X, cursorPos.Y, timestamp);
+                                
+                                // Update legacy tracking
+                                _mouseMovementDistance += distance;
+                                _lastInputTime = timestamp;
+                                
+                                _logger.LogDebug("[INPUT] Mouse movement detected: {Distance:F1}px", distance);
+                                
+                                // Only check for event generation occasionally, not on every mouse move
+                                if (_mouseMovementDistance % 100 < distance) // Every ~100 pixels
+                                {
+                                    CheckAndGenerateEvent();
+                                }
+                            }
+                        }
+                        
+                        _lastMousePosition = currentPosition;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in mouse hook procedure");
             }
 
             return CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
@@ -342,11 +482,20 @@ namespace DeskDefender.Services
         /// </summary>
         private void CheckAndGenerateEvent()
         {
-            var timeSinceLastEvent = DateTime.UtcNow - _sessionStartTime;
+            var now = DateTime.UtcNow;
+            var timeSinceLastEvent = now - _lastEventTime;
+            
+            _logger.LogDebug("CheckAndGenerateEvent: timeSinceLastEvent={TimeSince}, threshold={Threshold}, keystrokes={Keys}, clicks={Clicks}", 
+                timeSinceLastEvent, _sensitivityThreshold, _keystrokeCount, _mouseClickCount);
+                
             if (timeSinceLastEvent >= _sensitivityThreshold)
             {
+                _logger.LogInformation("Generating input event - threshold reached. Keystrokes: {Keys}, Clicks: {Clicks}, Movement: {Movement:F1}px", 
+                    _keystrokeCount, _mouseClickCount, _mouseMovementDistance);
+                    
                 GenerateInputEvent();
                 ResetCounters();
+                _lastEventTime = now; // Reset the last event time for next event
             }
         }
 
