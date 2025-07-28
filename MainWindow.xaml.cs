@@ -159,6 +159,9 @@ namespace DeskDefender
         {
             try
             {
+                _logger.LogInformation("=== TOGGLE MONITORING CLICKED ===");
+                _logger.LogInformation("Current monitoring state: {IsRunning}", _monitoringService.IsRunning);
+                
                 if (_monitoringService.IsRunning)
                 {
                     // Stop monitoring
@@ -173,15 +176,59 @@ namespace DeskDefender
                 }
                 else
                 {
-                    // Start monitoring
-                    await Task.Run(() => _monitoringService.Start());
+                    // Update UI immediately to show starting state
+                    ToggleMonitoringButton.Content = "Starting...";
+                    ToggleMonitoringButton.IsEnabled = false;
                     
-                    // Start background monitoring coordination
-                    _backgroundMonitoringService.StartBackgroundMonitoring();
-                    
-                    // Update UI and tray to reflect active state
-                    UpdateUIForMonitoringState(true);
-                    _trayService.UpdateMonitoringStatus(true);
+                    // Start monitoring in background without blocking UI
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            _logger.LogInformation("=== STARTING MONITORING SERVICES ===");
+                            
+                            // Create a simple test event first to verify logging works
+                            _logger.LogInformation("Creating test event to verify logging...");
+                            var testEvent = new EventLog
+                            {
+                                Id = Guid.NewGuid(),
+                                Timestamp = DateTime.Now,
+                                EventType = "System",
+                                Description = "Monitoring startup test - " + DateTime.Now.ToString("HH:mm:ss"),
+                                Severity = EventSeverity.Info,
+                                Source = "MainWindow"
+                            };
+                            
+                            await _eventLogger.LogAsync(testEvent);
+                            _logger.LogInformation("✅ Test event logged successfully");
+                            
+                            // Now try to start monitoring
+                            _logger.LogInformation("Starting CompositeMonitoringService...");
+                            _monitoringService.Start();
+                            _logger.LogInformation("✅ CompositeMonitoringService.IsRunning: {IsRunning}", _monitoringService.IsRunning);
+                            
+                            // Update UI on main thread
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                UpdateUIForMonitoringState(true);
+                                _trayService.UpdateMonitoringStatus(true);
+                                ToggleMonitoringButton.IsEnabled = true;
+                                _logger.LogInformation("✅ All services started, UI updated");
+                            });
+                        }
+                        catch (Exception startEx)
+                        {
+                            _logger.LogError(startEx, "❌ MONITORING STARTUP FAILED: {Message}", startEx.Message);
+                            
+                            // Update UI on main thread to show error
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                ToggleMonitoringButton.Content = "Start Monitoring";
+                                ToggleMonitoringButton.IsEnabled = true;
+                                System.Windows.MessageBox.Show($"❌ MONITORING FAILED:\n\n{startEx.Message}\n\nCheck console for details.", "Monitoring Failed", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                            });
+                        }
+                    });
                 }
             }
             catch (Exception ex)
@@ -489,8 +536,8 @@ namespace DeskDefender
                 _logger.LogInformation("Loading existing events from database at startup...");
                 
                 // Get events from the last 7 days to populate the UI
-                var startDate = DateTime.UtcNow.AddDays(-7);
-                var endDate = DateTime.UtcNow;
+                var startDate = DateTime.Now.AddDays(-7);
+                var endDate = DateTime.Now;
                 
                 var existingEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
                 _logger.LogInformation("Retrieved {EventCount} existing events from database", existingEvents.Count());
@@ -507,7 +554,7 @@ namespace DeskDefender
                         _eventLog.Add(displayModel);
                         
                         // Add to recent events if it's within the last hour
-                        if (eventLog.Timestamp > DateTime.UtcNow.AddHours(-1))
+                        if (eventLog.Timestamp > DateTime.Now.AddHours(-1))
                         {
                             _recentEvents.Add(displayModel);
                         }
@@ -801,7 +848,7 @@ namespace DeskDefender
                 var testEvent = new EventLog
                 {
                     Id = Guid.NewGuid(),
-                    Timestamp = DateTime.UtcNow,
+                    Timestamp = DateTime.Now,
                     EventType = "System",
                     Description = "Database Test Event - " + DateTime.Now.ToString("HH:mm:ss"),
                     Severity = EventSeverity.Info,
@@ -839,8 +886,8 @@ namespace DeskDefender
                 message.AppendLine("🔍 DATABASE RETRIEVAL TEST:");
                 try
                 {
-                    var startDate = DateTime.UtcNow.AddDays(-30);
-                    var endDate = DateTime.UtcNow;
+                    var startDate = DateTime.Now.AddDays(-30);
+                    var endDate = DateTime.Now;
                     var allEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
                     message.AppendLine($"✅ Retrieved {allEvents.Count()} events from database");
                     _logger.LogInformation("Retrieved {EventCount} events from database", allEvents.Count());
@@ -1063,7 +1110,63 @@ namespace DeskDefender
             }
         }
 
+        #endregion
 
+        #region Menu Event Handlers
+
+        /// <summary>
+        /// Handles the Clear Logs menu click event
+        /// </summary>
+        private async void ClearLogs_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = System.Windows.MessageBox.Show(
+                    "Are you sure you want to clear all logs from the database? This action cannot be undone.",
+                    "Clear Logs Confirmation",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    _logger.LogInformation("User requested to clear all logs from database");
+                    
+                    // Use the event logger to clear all events directly
+                    if (_eventLogger is SqliteEventLogger sqliteLogger)
+                    {
+                        await sqliteLogger.ClearAllEventsAsync();
+                        _logger.LogInformation("All logs cleared from database successfully");
+                        
+                        // Refresh the event log display
+                        await LoadEventLogAsync();
+                        
+                        System.Windows.MessageBox.Show(
+                            "All logs have been cleared from the database.",
+                            "Clear Logs Complete",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        _logger.LogError("Event logger is not SqliteEventLogger, cannot clear logs directly");
+                        System.Windows.MessageBox.Show(
+                            "Error: Cannot clear logs - event logger type not supported.",
+                            "Clear Logs Error",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing logs from database");
+                System.Windows.MessageBox.Show(
+                    $"Error clearing logs: {ex.Message}",
+                    "Clear Logs Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
 
         #endregion
 
@@ -1089,7 +1192,7 @@ namespace DeskDefender
 
         private string GetTimeAgo()
         {
-            var span = DateTime.UtcNow - Timestamp;
+            var span = DateTime.Now - Timestamp;
             if (span.TotalMinutes < 1) return "Just now";
             if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m ago";
             if (span.TotalDays < 1) return $"{(int)span.TotalHours}h ago";

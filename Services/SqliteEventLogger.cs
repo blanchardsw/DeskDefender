@@ -30,7 +30,7 @@ namespace DeskDefender.Services
         // Performance optimization - batch operations
         private readonly List<EventLog> _pendingEvents = new List<EventLog>();
         private readonly int _batchSize = 50;
-        private DateTime _lastFlush = DateTime.UtcNow;
+        private DateTime _lastFlush = DateTime.Now;
         private readonly TimeSpan _flushInterval = TimeSpan.FromSeconds(30);
 
         #endregion
@@ -81,7 +81,7 @@ namespace DeskDefender.Services
                     
                     // Check if we should flush the batch
                     var shouldFlush = _pendingEvents.Count >= _batchSize ||
-                                    DateTime.UtcNow - _lastFlush >= _flushInterval ||
+                                    DateTime.Now - _lastFlush >= _flushInterval ||
                                     eventLog.Severity >= EventSeverity.High; // Immediate flush for high severity
 
                     if (shouldFlush)
@@ -344,7 +344,7 @@ namespace DeskDefender.Services
 
             try
             {
-                var cutoffDate = DateTime.UtcNow.AddDays(-retentionDays);
+                var cutoffDate = DateTime.Now.AddDays(-retentionDays);
                 
                 using var context = _contextFactory.CreateDbContext();
                 
@@ -416,7 +416,7 @@ namespace DeskDefender.Services
                 
                 // Clear pending events after successful save
                 _pendingEvents.Clear();
-                _lastFlush = DateTime.UtcNow;
+                _lastFlush = DateTime.Now;
             }
             catch (Exception ex)
             {
@@ -497,6 +497,33 @@ namespace DeskDefender.Services
         #endregion
 
         #region Additional Interface Methods
+
+        /// <summary>
+        /// Clears all events from the database
+        /// </summary>
+        /// <returns>Task representing the async operation</returns>
+        public async Task ClearAllEventsAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Starting to clear all events from database");
+                
+                using var context = _contextFactory.CreateDbContext();
+                
+                // Remove all events
+                context.Events.RemoveRange(context.Events);
+                
+                // Save changes
+                await context.SaveChangesAsync();
+                
+                _logger.LogInformation("All events cleared from database successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing all events from database");
+                throw;
+            }
+        }
 
         /// <summary>
         /// Deletes events before a specific date

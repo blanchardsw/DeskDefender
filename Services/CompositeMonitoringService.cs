@@ -21,20 +21,28 @@ namespace DeskDefender.Services
         #region Private Fields
 
         private readonly ILogger<CompositeMonitoringService> _logger;
+        
+        // Core monitoring services
         private readonly IInputMonitor _inputMonitor;
         private readonly ICameraService _cameraService;
         private readonly IEventLogger _eventLogger;
         private readonly IAlertService _alertService;
         private readonly AppSettings _settings;
         
+        // Phase 2 security monitoring services
+        private readonly ISessionMonitor _sessionMonitor;
+        private readonly IBackgroundMonitoringService _backgroundMonitoringService;
+        private readonly ILoginMonitor _loginMonitor;
+        
         // Monitoring state
         private bool _isMonitoring = false;
+        private bool _disposed = false;
         private readonly object _lockObject = new object();
         
         // Event aggregation for intelligent alerting
         private readonly List<EventLog> _recentEvents = new List<EventLog>();
         private readonly TimeSpan _eventAggregationWindow = TimeSpan.FromMinutes(5);
-        private DateTime _lastEventCleanup = DateTime.UtcNow;
+        private DateTime _lastEventCleanup = DateTime.Now;
 
         // Image storage management
         private readonly string _imageStoragePath;
@@ -53,13 +61,19 @@ namespace DeskDefender.Services
         /// <param name="alertService">Alert delivery service</param>
         /// <param name="settings">Application settings</param>
         /// <param name="logger">Logger instance</param>
+        /// <param name="sessionMonitor">Session monitoring service for lock/unlock events</param>
+        /// <param name="backgroundMonitoringService">Background monitoring coordination service</param>
+        /// <param name="loginMonitor">Login monitoring service for login attempts</param>
         public CompositeMonitoringService(
             IInputMonitor inputMonitor,
             ICameraService cameraService,
             IEventLogger eventLogger,
             IAlertService alertService,
             AppSettings settings,
-            ILogger<CompositeMonitoringService> logger)
+            ILogger<CompositeMonitoringService> logger,
+            ISessionMonitor sessionMonitor,
+            IBackgroundMonitoringService backgroundMonitoringService,
+            ILoginMonitor loginMonitor)
         {
             _inputMonitor = inputMonitor ?? throw new ArgumentNullException(nameof(inputMonitor));
             _cameraService = cameraService ?? throw new ArgumentNullException(nameof(cameraService));
@@ -67,6 +81,9 @@ namespace DeskDefender.Services
             _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
+            _backgroundMonitoringService = backgroundMonitoringService ?? throw new ArgumentNullException(nameof(backgroundMonitoringService));
+            _loginMonitor = loginMonitor ?? throw new ArgumentNullException(nameof(loginMonitor));
 
             // Setup image storage directory
             _imageStoragePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _settings.ImageStoragePath);
@@ -98,14 +115,20 @@ namespace DeskDefender.Services
         /// </summary>
         public void Start()
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(CompositeMonitoringService));
+
+            if (_isMonitoring)
+            {
+                _logger.LogWarning("Monitoring service is already running");
+                return;
+            }
+
+            _logger.LogInformation("=== STARTING COMPOSITE MONITORING SERVICE WITH ALL COMPONENTS ===");
+            _logger.LogInformation("Services to start: Input Monitor, Camera Service, Session Monitor, Background Monitor, Login Monitor");
+
             lock (_lockObject)
             {
-                if (_isMonitoring)
-                {
-                    _logger.LogWarning("Monitoring is already running");
-                    return;
-                }
-
                 try
                 {
                     _logger.LogInformation("Starting comprehensive monitoring system...");
@@ -113,6 +136,54 @@ namespace DeskDefender.Services
                     // Start services in order of dependency
                     var startupTasks = new List<Task>();
                     var serviceStartResults = new List<string>();
+
+                    // Start session monitoring (critical for lock/unlock events)
+                    startupTasks.Add(Task.Run(() =>
+                    {
+                        try
+                        {
+                            _sessionMonitor.StartMonitoring();
+                            _logger.LogInformation("Session monitoring started successfully");
+                            lock (serviceStartResults) { serviceStartResults.Add("Session monitoring: Started"); }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to start session monitoring - lock/unlock events will not be logged");
+                            lock (serviceStartResults) { serviceStartResults.Add("Session monitoring: Failed"); }
+                        }
+                    }));
+
+                    // Start background monitoring coordination (critical for locked session monitoring)
+                    startupTasks.Add(Task.Run(() =>
+                    {
+                        try
+                        {
+                            _backgroundMonitoringService.StartBackgroundMonitoring();
+                            _logger.LogInformation("Background monitoring coordination started successfully");
+                            lock (serviceStartResults) { serviceStartResults.Add("Background monitoring: Started"); }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to start background monitoring - monitoring during locked sessions will not work");
+                            lock (serviceStartResults) { serviceStartResults.Add("Background monitoring: Failed"); }
+                        }
+                    }));
+
+                    // Start login monitoring (critical for login attempt detection)
+                    startupTasks.Add(Task.Run(() =>
+                    {
+                        try
+                        {
+                            _loginMonitor.Start();
+                            _logger.LogInformation("Login monitoring started successfully");
+                            lock (serviceStartResults) { serviceStartResults.Add("Login monitoring: Started"); }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to start login monitoring - login attempts will not be logged (may require administrator privileges)");
+                            lock (serviceStartResults) { serviceStartResults.Add("Login monitoring: Failed"); }
+                        }
+                    }));
 
                     // Start input monitoring if enabled
                     if (_settings.EnableInputMonitoring)
@@ -162,34 +233,42 @@ namespace DeskDefender.Services
                         }));
                     }
 
-                    // Wait for all services to attempt startup (don't fail if individual services fail)
-                    try
+                    // Start all services asynchronously without blocking
+                    // Services will start in parallel and report their status independently
+                    _ = Task.Run(async () =>
                     {
-                        Task.WaitAll(startupTasks.ToArray(), TimeSpan.FromSeconds(10));
-                    }
-                    catch (AggregateException ex)
-                    {
-                        _logger.LogWarning("Some services failed to start, but monitoring will continue with available services: {Exception}", ex.Message);
-                    }
+                        try
+                        {
+                            await Task.WhenAll(startupTasks);
+                            _logger.LogInformation("All monitoring services startup attempts completed");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("Some services failed to start, but monitoring will continue with available services: {Exception}", ex.Message);
+                        }
+                        
+                        // Log which services started successfully after they complete
+                        var successMessage = "Monitoring services status: " + string.Join(", ", serviceStartResults);
+                        _logger.LogInformation(successMessage);
+                    });
 
                     _isMonitoring = true;
                     StatusChanged?.Invoke(this, true);
                     
-                    // Log which services started successfully
-                    var successMessage = "Monitoring started with the following services: " + string.Join(", ", serviceStartResults);
-                    _logger.LogInformation(successMessage);
+                    _logger.LogInformation("Monitoring service started - services are initializing in background");
 
-                    // Log startup event
-                    var startupEvent = new EventLog
+                    // Log startup event asynchronously
+                    _ = Task.Run(async () =>
                     {
-                        EventType = "System",
-                        Description = "DeskDefender monitoring started",
-                        Severity = EventSeverity.Info,
-                        Source = "CompositeMonitoringService"
-                    };
-                    
-                    // Log startup event outside of lock to avoid async/await in lock
-                    Task.Run(async () => await _eventLogger.LogAsync(startupEvent));
+                        var startupEvent = new EventLog
+                        {
+                            EventType = "System",
+                            Description = "DeskDefender monitoring started",
+                            Severity = EventSeverity.Info,
+                            Source = "CompositeMonitoringService"
+                        };
+                        await _eventLogger.LogAsync(startupEvent);
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -230,6 +309,36 @@ namespace DeskDefender.Services
                     // Stop services in reverse order
                     var stopTasks = new List<Task>();
 
+                    // Stop background monitoring coordination first
+                    if (_backgroundMonitoringService.IsBackgroundMonitoringActive)
+                    {
+                        stopTasks.Add(Task.Run(() =>
+                        {
+                            _backgroundMonitoringService.StopBackgroundMonitoring();
+                            _logger.LogInformation("Background monitoring coordination stopped");
+                        }));
+                    }
+
+                    // Stop session monitoring
+                    if (_sessionMonitor.IsMonitoring)
+                    {
+                        stopTasks.Add(Task.Run(() =>
+                        {
+                            _sessionMonitor.StopMonitoring();
+                            _logger.LogInformation("Session monitoring stopped");
+                        }));
+                    }
+
+                    // Stop login monitoring
+                    if (_loginMonitor.IsRunning)
+                    {
+                        stopTasks.Add(Task.Run(() =>
+                        {
+                            _loginMonitor.Stop();
+                            _logger.LogInformation("Login monitoring stopped");
+                        }));
+                    }
+
                     if (_cameraService.IsRunning)
                     {
                         stopTasks.Add(Task.Run(() =>
@@ -263,7 +372,7 @@ namespace DeskDefender.Services
                         EventType = "System",
                         Description = "Monitoring services stopped",
                         Severity = EventSeverity.Info,
-                        Timestamp = DateTime.UtcNow,
+                        Timestamp = DateTime.Now,
                         Source = "CompositeMonitoringService"
                     }));
                 }
@@ -316,7 +425,7 @@ namespace DeskDefender.Services
             try
             {
                 // Enrich event with additional metadata
-                eventLog.Timestamp = DateTime.UtcNow;
+                eventLog.Timestamp = DateTime.Now;
                 
                 // Log the event to database
                 await _eventLogger.LogAsync(eventLog);
@@ -519,7 +628,7 @@ namespace DeskDefender.Services
                 {
                     var recentSimilarEvents = _recentEvents.FindAll(e => 
                         e.EventType == eventLog.EventType && 
-                        DateTime.UtcNow - e.Timestamp < TimeSpan.FromMinutes(10));
+                        DateTime.Now - e.Timestamp < TimeSpan.FromMinutes(10));
 
                     // Alert if multiple similar events in short time
                     if (recentSimilarEvents.Count >= 3)
@@ -586,7 +695,7 @@ namespace DeskDefender.Services
         {
             try
             {
-                var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss-fff");
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff");
                 var fileName = $"capture_{timestamp}.jpg";
                 var filePath = Path.Combine(_imageStoragePath, fileName);
 
@@ -615,14 +724,14 @@ namespace DeskDefender.Services
         /// </summary>
         private void CleanupOldEvents()
         {
-            if (DateTime.UtcNow - _lastEventCleanup < TimeSpan.FromMinutes(1))
+            if (DateTime.Now - _lastEventCleanup < TimeSpan.FromMinutes(1))
             {
                 return; // Don't cleanup too frequently
             }
 
-            var cutoffTime = DateTime.UtcNow - _eventAggregationWindow;
+            var cutoffTime = DateTime.Now - _eventAggregationWindow;
             _recentEvents.RemoveAll(e => e.Timestamp < cutoffTime);
-            _lastEventCleanup = DateTime.UtcNow;
+            _lastEventCleanup = DateTime.Now;
 
             _logger.LogDebug("Cleaned up old events, {Count} events remaining", _recentEvents.Count);
         }
@@ -646,7 +755,7 @@ namespace DeskDefender.Services
                 // Cleanup old log entries if configured
                 if (_settings.LogRetentionDays > 0)
                 {
-                    var cutoffDate = DateTime.UtcNow.AddDays(-_settings.LogRetentionDays);
+                    var cutoffDate = DateTime.Now.AddDays(-_settings.LogRetentionDays);
                     await _eventLogger.ClearOldEventsAsync(cutoffDate);
                     _logger.LogInformation("Cleaned up old log entries older than {CutoffDate}", cutoffDate);
                 }

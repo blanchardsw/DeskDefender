@@ -52,6 +52,11 @@ namespace DeskDefender.Services
         public bool IsSessionLocked => _isSessionLocked;
 
         /// <summary>
+        /// Gets whether session monitoring is currently active
+        /// </summary>
+        public bool IsMonitoring => _isMonitoring;
+
+        /// <summary>
         /// Starts monitoring session state changes
         /// </summary>
         public void StartMonitoring()

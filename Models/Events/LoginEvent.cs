@@ -16,7 +16,7 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// Username involved in the login attempt
         /// </summary>
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether the login attempt was successful
@@ -31,21 +31,21 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// Source IP address of the login attempt (if available)
         /// </summary>
-        public string SourceIpAddress { get; set; }
+        public string? SourceIpAddress { get; set; }
 
         /// <summary>
         /// Workstation name from which the login was attempted
         /// </summary>
-        public string WorkstationName { get; set; }
+        public string WorkstationName { get; set; } = string.Empty;
 
         /// <summary>
         /// Logon type (Interactive, Network, Service, etc.)
         /// </summary>
-        public string LogonType { get; set; }
+        public string LogonType { get; set; } = string.Empty;
 
         /// <summary>
         /// Failure reason for unsuccessful login attempts
         /// </summary>
-        public string FailureReason { get; set; }
+        public string? FailureReason { get; set; }
     }
 }

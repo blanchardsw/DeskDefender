@@ -226,16 +226,31 @@ namespace DeskDefender
                     services.AddSingleton<SettingsService>();
                     services.AddSingleton<LogExportService>();
                     services.AddSingleton<DatabaseMaintenanceService>();
-                    services.AddSingleton<IInputMonitor, WindowsInputMonitor>();
+                    services.AddSingleton<IInputMonitor, WindowsInputMonitor>(); // Regular input monitoring
                     services.AddSingleton<ICameraService, OpenCvCameraService>();
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
                     services.AddSingleton<IAlertService, TwilioAlertService>();
-                    services.AddSingleton<IMonitorService, CompositeMonitoringService>();
                     
                     // Phase 2: Session Lock Detection & Background Monitoring Services
                     services.AddSingleton<ISessionMonitor, WindowsSessionMonitor>();
                     services.AddSingleton<ITrayService, WorkingTrayService>();
                     services.AddSingleton<IBackgroundMonitoringService, BackgroundMonitoringService>();
+                    
+                    // Phase 3: Login Monitoring Services
+                    services.AddSingleton<ILoginMonitor, WindowsLoginMonitor>();
+                    
+                    // Composite monitoring service (must be registered after all dependencies)
+                    services.AddSingleton<IMonitorService>(provider => new CompositeMonitoringService(
+                        provider.GetRequiredService<IInputMonitor>(),
+                        provider.GetRequiredService<ICameraService>(),
+                        provider.GetRequiredService<IEventLogger>(),
+                        provider.GetRequiredService<IAlertService>(),
+                        provider.GetRequiredService<AppSettings>(),
+                        provider.GetRequiredService<ILogger<CompositeMonitoringService>>(),
+                        provider.GetRequiredService<ISessionMonitor>(),
+                        provider.GetRequiredService<IBackgroundMonitoringService>(),
+                        provider.GetRequiredService<ILoginMonitor>()
+                    ));
 
                     // UI
                     services.AddTransient<MainWindow>();

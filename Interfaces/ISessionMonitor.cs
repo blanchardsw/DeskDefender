@@ -18,6 +18,11 @@ namespace DeskDefender.Interfaces
         bool IsSessionLocked { get; }
 
         /// <summary>
+        /// Gets whether session monitoring is currently active
+        /// </summary>
+        bool IsMonitoring { get; }
+
+        /// <summary>
         /// Starts monitoring session state changes
         /// </summary>
         void StartMonitoring();
