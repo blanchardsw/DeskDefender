@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using DeskDefender.Models.Events;
 using Microsoft.EntityFrameworkCore;
 
@@ -142,8 +143,22 @@ namespace DeskDefender.Data
             modelBuilder.Entity<InputEvent>()
                 .HasBaseType<EventLog>();
 
-            modelBuilder.Entity<CameraEvent>()
-                .HasBaseType<EventLog>();
+            modelBuilder.Entity<CameraEvent>(entity =>
+            {
+                entity.HasBaseType<EventLog>();
+                
+                // Configure Size type conversion for FrameResolution
+                entity.Property(e => e.FrameResolution)
+                    .HasConversion(
+                        size => $"{size.Width},{size.Height}", // Convert Size to string
+                        value => ParseSize(value) // Convert string back to Size
+                    )
+                    .HasMaxLength(20);
+                    
+                // Configure enum conversions
+                entity.Property(e => e.DetectionType)
+                    .HasConversion<int>();
+            });
 
             modelBuilder.Entity<LoginEvent>()
                 .HasBaseType<EventLog>();
@@ -164,6 +179,35 @@ namespace DeskDefender.Data
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Parses a string representation of Size back to Size object
+        /// Used for Entity Framework type conversion
+        /// </summary>
+        /// <param name="value">String in format "width,height"</param>
+        /// <returns>Size object</returns>
+        private static Size ParseSize(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return new Size(0, 0);
+                
+            try
+            {
+                var parts = value.Split(',');
+                if (parts.Length == 2 && 
+                    int.TryParse(parts[0], out int width) && 
+                    int.TryParse(parts[1], out int height))
+                {
+                    return new Size(width, height);
+                }
+            }
+            catch
+            {
+                // Fall through to default
+            }
+            
+            return new Size(0, 0);
+        }
 
         /// <summary>
         /// Ensures the database is created and up to date

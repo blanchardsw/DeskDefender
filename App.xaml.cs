@@ -169,19 +169,47 @@ namespace DeskDefender
         {
             try
             {
+                // Ensure data directory exists
+                var dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+                if (!Directory.Exists(dataDirectory))
+                {
+                    Directory.CreateDirectory(dataDirectory);
+                }
+
                 var contextFactory = _serviceProvider.GetRequiredService<IDbContextFactory<SecurityContext>>();
                 using var context = contextFactory.CreateDbContext();
                 
-                // Ensure database is created
-                context.Database.EnsureCreated();
+                // Test database connection first
+                if (!context.Database.CanConnect())
+                {
+                    // Ensure database is created
+                    context.Database.EnsureCreated();
+                }
+                
+                // Verify database is accessible
+                var canConnect = context.Database.CanConnect();
+                if (!canConnect)
+                {
+                    throw new InvalidOperationException("Cannot connect to database after creation");
+                }
                 
                 // Log successful initialization
                 var logger = _serviceProvider.GetRequiredService<ILogger<App>>();
-                logger.LogInformation("Database initialized successfully");
+                logger.LogInformation("Database initialized successfully at: {DataDirectory}", dataDirectory);
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("Failed to initialize database", ex);
+                var errorMessage = $"Failed to initialize database: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $" Inner exception: {ex.InnerException.Message}";
+                }
+                
+                // Try to log to debug output if logger isn't available
+                System.Diagnostics.Debug.WriteLine(errorMessage);
+                Console.WriteLine(errorMessage);
+                
+                throw new InvalidOperationException(errorMessage, ex);
             }
         }
     }

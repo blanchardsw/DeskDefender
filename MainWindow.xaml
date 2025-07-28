@@ -7,8 +7,7 @@
         mc:Ignorable="d"
         Title="DeskDefender - Security Monitoring" Height="700" Width="1200"
         MinHeight="600" MinWidth="900"
-        WindowStartupLocation="CenterScreen"
-        Icon="Resources/shield.ico">
+        WindowStartupLocation="CenterScreen">
     
     <!-- Main Grid Layout -->
     <Grid>
