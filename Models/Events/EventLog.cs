@@ -20,12 +20,12 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// Type of event (Input, Motion, Login, USB, etc.)
         /// </summary>
-        public string EventType { get; set; }
+        public string? EventType { get; set; }
 
         /// <summary>
         /// Detailed description of the event
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// Severity level of the event
@@ -35,12 +35,12 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// Path to associated image file (if any)
         /// </summary>
-        public string ImagePath { get; set; }
+        public string? ImagePath { get; set; }
 
         /// <summary>
         /// Additional metadata as JSON string
         /// </summary>
-        public string Metadata { get; set; }
+        public string? Metadata { get; set; }
 
         /// <summary>
         /// Whether this event triggered an alert
@@ -50,7 +50,7 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// Source component that generated the event
         /// </summary>
-        public string Source { get; set; }
+        public string? Source { get; set; }
     }
 
     // EventSeverity enum is defined in EventSeverity.cs to avoid duplication

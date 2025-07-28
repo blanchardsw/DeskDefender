@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using DeskDefender.Data;
 using DeskDefender.Interfaces;
 using DeskDefender.Models.Configuration;
@@ -21,33 +23,98 @@ namespace DeskDefender
     {
         private IHost _host;
         private IServiceProvider _serviceProvider;
+        
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool AllocConsole();
+        
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool FreeConsole();
 
         /// <summary>
         /// Application startup - configures dependency injection and services
         /// </summary>
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Allocate console for debug output in WPF app
+            AllocConsole();
+            
+            // Set up global exception handlers
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+            DispatcherUnhandledException += OnDispatcherUnhandledException;
+            
             try
             {
+                Console.WriteLine("[DEBUG] Starting DeskDefender application...");
+                System.Diagnostics.Debug.WriteLine("[DEBUG] Starting DeskDefender application...");
+                
                 // Build the dependency injection container
+                Console.WriteLine("[DEBUG] Building dependency injection container...");
                 _host = CreateHostBuilder().Build();
                 _serviceProvider = _host.Services;
+                Console.WriteLine("[DEBUG] Dependency injection container built successfully.");
 
                 // Initialize database
+                Console.WriteLine("[DEBUG] Initializing database...");
                 InitializeDatabase();
+                Console.WriteLine("[DEBUG] Database initialized successfully.");
 
                 // Create and show main window
+                Console.WriteLine("[DEBUG] Creating main window...");
                 var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+                Console.WriteLine("[DEBUG] Main window created, showing window...");
                 mainWindow.Show();
+                Console.WriteLine("[DEBUG] Main window shown successfully.");
 
                 base.OnStartup(e);
+                Console.WriteLine("[DEBUG] Application startup completed successfully.");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Application startup failed: {ex.Message}", "Startup Error", 
+                var errorMessage = $"Application startup failed: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $"\nInner Exception: {ex.InnerException.Message}";
+                }
+                errorMessage += $"\nStack Trace: {ex.StackTrace}";
+                
+                Console.WriteLine($"[ERROR] {errorMessage}");
+                System.Diagnostics.Debug.WriteLine($"[ERROR] {errorMessage}");
+                
+                MessageBox.Show(errorMessage, "Startup Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }
+        }
+        
+        private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            var ex = e.ExceptionObject as Exception;
+            var errorMessage = $"Unhandled exception: {ex?.Message ?? "Unknown error"}";
+            if (ex?.InnerException != null)
+            {
+                errorMessage += $"\nInner Exception: {ex.InnerException.Message}";
+            }
+            errorMessage += $"\nStack Trace: {ex?.StackTrace ?? "No stack trace available"}";
+            
+            Console.WriteLine($"[FATAL] {errorMessage}");
+            System.Diagnostics.Debug.WriteLine($"[FATAL] {errorMessage}");
+        }
+        
+        private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        {
+            var errorMessage = $"Dispatcher unhandled exception: {e.Exception.Message}";
+            if (e.Exception.InnerException != null)
+            {
+                errorMessage += $"\nInner Exception: {e.Exception.InnerException.Message}";
+            }
+            errorMessage += $"\nStack Trace: {e.Exception.StackTrace}";
+            
+            Console.WriteLine($"[FATAL] {errorMessage}");
+            System.Diagnostics.Debug.WriteLine($"[FATAL] {errorMessage}");
+            
+            e.Handled = true; // Prevent app from crashing immediately
         }
 
         /// <summary>
@@ -169,33 +236,57 @@ namespace DeskDefender
         {
             try
             {
+                Console.WriteLine("[DEBUG] Starting database initialization...");
+                
                 // Ensure data directory exists
                 var dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+                Console.WriteLine($"[DEBUG] Data directory path: {dataDirectory}");
+                
                 if (!Directory.Exists(dataDirectory))
                 {
+                    Console.WriteLine("[DEBUG] Creating data directory...");
                     Directory.CreateDirectory(dataDirectory);
+                    Console.WriteLine("[DEBUG] Data directory created successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("[DEBUG] Data directory already exists.");
                 }
 
+                Console.WriteLine("[DEBUG] Getting database context factory...");
                 var contextFactory = _serviceProvider.GetRequiredService<IDbContextFactory<SecurityContext>>();
+                Console.WriteLine("[DEBUG] Creating database context...");
                 using var context = contextFactory.CreateDbContext();
+                Console.WriteLine("[DEBUG] Database context created successfully.");
                 
                 // Test database connection first
+                Console.WriteLine("[DEBUG] Testing database connection...");
                 if (!context.Database.CanConnect())
                 {
+                    Console.WriteLine("[DEBUG] Cannot connect to database, creating database...");
                     // Ensure database is created
                     context.Database.EnsureCreated();
+                    Console.WriteLine("[DEBUG] Database created successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("[DEBUG] Database connection successful.");
                 }
                 
                 // Verify database is accessible
+                Console.WriteLine("[DEBUG] Verifying database accessibility...");
                 var canConnect = context.Database.CanConnect();
                 if (!canConnect)
                 {
                     throw new InvalidOperationException("Cannot connect to database after creation");
                 }
+                Console.WriteLine("[DEBUG] Database accessibility verified.");
                 
                 // Log successful initialization
+                Console.WriteLine("[DEBUG] Getting logger service...");
                 var logger = _serviceProvider.GetRequiredService<ILogger<App>>();
                 logger.LogInformation("Database initialized successfully at: {DataDirectory}", dataDirectory);
+                Console.WriteLine("[DEBUG] Database initialization completed successfully.");
             }
             catch (Exception ex)
             {
@@ -204,10 +295,11 @@ namespace DeskDefender
                 {
                     errorMessage += $" Inner exception: {ex.InnerException.Message}";
                 }
+                errorMessage += $"\nStack Trace: {ex.StackTrace}";
                 
                 // Try to log to debug output if logger isn't available
-                System.Diagnostics.Debug.WriteLine(errorMessage);
-                Console.WriteLine(errorMessage);
+                System.Diagnostics.Debug.WriteLine($"[ERROR] {errorMessage}");
+                Console.WriteLine($"[ERROR] {errorMessage}");
                 
                 throw new InvalidOperationException(errorMessage, ex);
             }

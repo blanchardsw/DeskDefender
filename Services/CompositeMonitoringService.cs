@@ -112,15 +112,25 @@ namespace DeskDefender.Services
 
                     // Start services in order of dependency
                     var startupTasks = new List<Task>();
+                    var serviceStartResults = new List<string>();
 
                     // Start input monitoring if enabled
                     if (_settings.EnableInputMonitoring)
                     {
                         startupTasks.Add(Task.Run(() =>
                         {
-                            _inputMonitor.SetSensitivity(_settings.InputSensitivityThreshold);
-                            _inputMonitor.Start();
-                            _logger.LogInformation("Input monitoring started");
+                            try
+                            {
+                                _inputMonitor.SetSensitivity(_settings.InputSensitivityThreshold);
+                                _inputMonitor.Start();
+                                _logger.LogInformation("Input monitoring started successfully");
+                                lock (serviceStartResults) { serviceStartResults.Add("Input monitoring: Started"); }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to start input monitoring, but continuing with other services");
+                                lock (serviceStartResults) { serviceStartResults.Add("Input monitoring: Failed"); }
+                            }
                         }));
                     }
 
@@ -129,18 +139,45 @@ namespace DeskDefender.Services
                     {
                         startupTasks.Add(Task.Run(() =>
                         {
-                            _cameraService.SetMotionSensitivity(_settings.MotionSensitivity);
-                            _cameraService.Start();
-                            _logger.LogInformation("Camera monitoring started");
+                            try
+                            {
+                                _cameraService.SetMotionSensitivity(_settings.MotionSensitivity);
+                                _cameraService.Start();
+                                if (_cameraService.IsRunning)
+                                {
+                                    _logger.LogInformation("Camera monitoring started successfully");
+                                    lock (serviceStartResults) { serviceStartResults.Add("Camera monitoring: Started"); }
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Camera monitoring failed to start (camera not available)");
+                                    lock (serviceStartResults) { serviceStartResults.Add("Camera monitoring: Not available"); }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to start camera monitoring, but continuing with other services");
+                                lock (serviceStartResults) { serviceStartResults.Add("Camera monitoring: Failed"); }
+                            }
                         }));
                     }
 
-                    // Wait for all services to start
-                    Task.WaitAll(startupTasks.ToArray(), TimeSpan.FromSeconds(10));
+                    // Wait for all services to attempt startup (don't fail if individual services fail)
+                    try
+                    {
+                        Task.WaitAll(startupTasks.ToArray(), TimeSpan.FromSeconds(10));
+                    }
+                    catch (AggregateException ex)
+                    {
+                        _logger.LogWarning("Some services failed to start, but monitoring will continue with available services: {Exception}", ex.Message);
+                    }
 
                     _isMonitoring = true;
                     StatusChanged?.Invoke(this, true);
-                    _logger.LogInformation("All monitoring services started successfully");
+                    
+                    // Log which services started successfully
+                    var successMessage = "Monitoring started with the following services: " + string.Join(", ", serviceStartResults);
+                    _logger.LogInformation(successMessage);
 
                     // Log startup event
                     var startupEvent = new EventLog
@@ -276,14 +313,20 @@ namespace DeskDefender.Services
         /// </summary>
         private async Task ProcessEventAsync(EventLog eventLog)
         {
-            // Subscribe to input events
-            _inputMonitor.InputDetected += OnInputDetected;
-
-            // Subscribe to camera events
-            _cameraService.MotionDetected += OnMotionDetected;
-            _cameraService.FrameCaptured += OnFrameCaptured;
-
-            _logger.LogDebug("Event subscriptions established");
+            try
+            {
+                // Enrich event with additional metadata
+                eventLog.Timestamp = DateTime.UtcNow;
+                
+                // Log the event to database
+                await _eventLogger.LogAsync(eventLog);
+                
+                _logger.LogDebug("Event processed and logged: {EventType} - {Description}", eventLog.EventType, eventLog.Description);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing event: {EventType}", eventLog.EventType);
+            }
         }
 
         /// <summary>
@@ -329,7 +372,7 @@ namespace DeskDefender.Services
                 _logger.LogDebug("Input event received: {Description}", inputEvent.Description);
 
                 // Process and enrich the event
-                await ProcessEvent(inputEvent);
+                await ProcessEventAsync(inputEvent);
 
                 // Determine if this event should trigger an alert
                 if (ShouldTriggerAlert(inputEvent))

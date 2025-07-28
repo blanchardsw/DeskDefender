@@ -109,7 +109,10 @@ namespace DeskDefender.Services
                     
                     if (!_capture.IsOpened())
                     {
-                        throw new InvalidOperationException($"Failed to open camera at index {_cameraIndex}");
+                        _logger.LogWarning("Failed to open camera at index {CameraIndex}. Camera monitoring will be disabled, but other monitoring services will continue.", _cameraIndex);
+                        _isCapturing = false;
+                        Cleanup();
+                        return; // Don't throw exception, just return gracefully
                     }
 
                     // Configure camera properties for optimal performance
@@ -131,9 +134,10 @@ namespace DeskDefender.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to start camera capture");
+                    _logger.LogWarning(ex, "Failed to start camera capture. Camera monitoring will be disabled, but other monitoring services will continue.");
+                    _isCapturing = false;
                     Cleanup();
-                    throw;
+                    // Don't throw exception, just log and continue
                 }
             }
         }
