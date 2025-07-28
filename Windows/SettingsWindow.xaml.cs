@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using DeskDefender.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -166,7 +167,7 @@ namespace DeskDefender.Windows
         /// <summary>
         /// Apply all settings changes
         /// </summary>
-        private bool ApplySettings()
+        private bool ApplySettings(object sender = null)
         {
             try
             {

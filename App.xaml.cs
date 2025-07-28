@@ -306,22 +306,36 @@ namespace DeskDefender
 
                 Console.WriteLine("[DEBUG] Getting database context factory...");
                 var contextFactory = _serviceProvider.GetRequiredService<IDbContextFactory<SecurityContext>>();
+                
                 Console.WriteLine("[DEBUG] Creating database context...");
                 using var context = contextFactory.CreateDbContext();
                 Console.WriteLine("[DEBUG] Database context created successfully.");
                 
-                // Test database connection first
-                Console.WriteLine("[DEBUG] Testing database connection...");
+                // Ensure database exists and is up to date
+                Console.WriteLine("[DEBUG] Ensuring database exists and is up to date...");
+                
+                // Only create database if it doesn't exist - preserve existing data
                 if (!context.Database.CanConnect())
                 {
-                    Console.WriteLine("[DEBUG] Cannot connect to database, creating database...");
-                    // Ensure database is created
+                    Console.WriteLine("[DEBUG] Database doesn't exist, creating new database...");
                     context.Database.EnsureCreated();
-                    Console.WriteLine("[DEBUG] Database created successfully.");
+                    Console.WriteLine("[DEBUG] New database created successfully.");
                 }
                 else
                 {
-                    Console.WriteLine("[DEBUG] Database connection successful.");
+                    Console.WriteLine("[DEBUG] Database already exists, checking for pending migrations...");
+                    // Apply any pending migrations to update schema without losing data
+                    try
+                    {
+                        context.Database.Migrate();
+                        Console.WriteLine("[DEBUG] Database migrations applied successfully.");
+                    }
+                    catch (Exception migrationEx)
+                    {
+                        Console.WriteLine($"[WARNING] Migration failed, falling back to EnsureCreated: {migrationEx.Message}");
+                        // If migrations fail, ensure database is created (this won't delete existing data)
+                        context.Database.EnsureCreated();
+                    }
                 }
                 
                 // Verify database is accessible

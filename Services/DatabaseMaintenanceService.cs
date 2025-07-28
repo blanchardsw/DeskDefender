@@ -280,8 +280,8 @@ namespace DeskDefender.Services
         public bool Success { get; set; }
         public int EventsPurged { get; set; }
         public double SizeReductionMB { get; set; }
-        public string ErrorMessage { get; set; }
-        public DatabaseStatistics StatsBefore { get; set; }
-        public DatabaseStatistics StatsAfter { get; set; }
+        public string? ErrorMessage { get; set; }
+        public DatabaseStatistics? StatsBefore { get; set; }
+        public DatabaseStatistics? StatsAfter { get; set; }
     }
 }

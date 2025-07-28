@@ -508,12 +508,12 @@ namespace DeskDefender.Services
             {
                 using var context = _contextFactory.CreateDbContext();
                 
-                var eventsToDelete = context.EventLogs.Where(e => e.Timestamp < beforeDate);
+                var eventsToDelete = context.Events.Where(e => e.Timestamp < beforeDate);
                 var deleteCount = await eventsToDelete.CountAsync();
                 
                 if (deleteCount > 0)
                 {
-                    context.EventLogs.RemoveRange(eventsToDelete);
+                    context.Events.RemoveRange(eventsToDelete);
                     await context.SaveChangesAsync();
                     
                     _logger.LogInformation("Deleted {DeleteCount} events before {BeforeDate}", deleteCount, beforeDate);
@@ -528,15 +528,6 @@ namespace DeskDefender.Services
                 _logger.LogError(ex, "Error deleting events before {BeforeDate}", beforeDate);
                 throw;
             }
-        }
-
-        /// <summary>
-        /// Logs an event asynchronously (alternative method name)
-        /// </summary>
-        /// <param name="eventLog">The event to log</param>
-        public async Task LogEventAsync(EventLog eventLog)
-        {
-            await LogAsync(eventLog);
         }
 
         #endregion

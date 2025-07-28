@@ -29,7 +29,7 @@ namespace DeskDefender.Services
         /// Displays an event summary to the user
         /// </summary>
         /// <param name="summary">The event summary to display</param>
-        public void DisplaySummary(EventSummary summary)
+        public async Task DisplaySummary(EventSummary summary)
         {
             try
             {
@@ -37,7 +37,7 @@ namespace DeskDefender.Services
                 SummaryForUI?.Invoke(summary);
                 
                 // Save summary to database for persistence
-                SaveSummaryToDatabase(summary);
+                await SaveSummaryToDatabase(summary);
                 
                 // Display to console for now (can be extended to UI later)
                 var summaryText = summary.GetSummaryDescription();
@@ -121,7 +121,7 @@ namespace DeskDefender.Services
         /// Save event summary to database for persistence between sessions
         /// </summary>
         /// <param name="summary">The event summary to save</param>
-        private void SaveSummaryToDatabase(EventSummary summary)
+        private async Task SaveSummaryToDatabase(EventSummary summary)
         {
             try
             {
@@ -142,19 +142,17 @@ namespace DeskDefender.Services
                     })
                 };
 
-                // Save to database asynchronously
-                _ = Task.Run(async () =>
+                // Save to database asynchronously - CRITICAL FIX: Use proper async/await instead of fire-and-forget
+                try
                 {
-                    try
-                    {
-                        await _eventLogger.LogEventAsync(eventLog);
-                        _logger.LogDebug("Event summary saved to database: {Description}", eventLog.Description);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to save event summary to database");
-                    }
-                });
+                    await _eventLogger.LogEventAsync(eventLog);
+                    _logger.LogDebug("Event summary saved to database: {Description}", eventLog.Description);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save event summary to database: {Message}", ex.Message);
+                    // Don't rethrow - we want to continue processing even if DB save fails
+                }
             }
             catch (Exception ex)
             {

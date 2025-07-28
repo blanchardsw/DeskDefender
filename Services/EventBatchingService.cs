@@ -19,7 +19,7 @@ namespace DeskDefender.Services
         private readonly object _lockObject = new object();
         
         // Configuration
-        private TimeSpan _summaryInterval = TimeSpan.FromSeconds(5); // Default 5 seconds
+        private TimeSpan _summaryInterval = TimeSpan.FromSeconds(30); // Default 30 seconds
         
         // Current batch data
         private DateTime _currentBatchStart;

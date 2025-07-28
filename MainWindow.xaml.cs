@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -262,17 +263,41 @@ namespace DeskDefender
         {
             try
             {
-                var events = await _eventLogger.GetEventsAsync(DateTime.Today.AddDays(-7), DateTime.Now);
+                _logger.LogInformation("Loading existing events from database at startup...");
                 
-                _eventLog.Clear();
-                foreach (var eventLog in events)
+                // Get events from the last 7 days to populate the UI
+                var startDate = DateTime.UtcNow.AddDays(-7);
+                var endDate = DateTime.UtcNow;
+                
+                var existingEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
+                _logger.LogInformation("Retrieved {EventCount} existing events from database", existingEvents.Count());
+                
+                // Clear existing UI events and populate with database events
+                Application.Current.Dispatcher.Invoke(() =>
                 {
-                    _eventLog.Add(new EventDisplayModel(eventLog));
-                }
+                    _eventLog.Clear();
+                    _recentEvents.Clear();
+                    
+                    foreach (var eventLog in existingEvents.OrderByDescending(e => e.Timestamp))
+                    {
+                        var displayModel = new EventDisplayModel(eventLog);
+                        _eventLog.Add(displayModel);
+                        
+                        // Add to recent events if it's within the last hour
+                        if (eventLog.Timestamp > DateTime.UtcNow.AddHours(-1))
+                        {
+                            _recentEvents.Add(displayModel);
+                        }
+                    }
+                    
+                    _logger.LogInformation("Loaded {UIEventCount} events into UI, {RecentCount} recent events", 
+                        _eventLog.Count, _recentEvents.Count);
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading event log");
+                _logger.LogError(ex, "Failed to load existing events from database at startup");
+                // Don't throw - app should continue even if event loading fails
             }
         }
 
@@ -457,6 +482,209 @@ namespace DeskDefender
                     MessageBoxImage.Error);
             }
         }
+
+        /// <summary>
+        /// Copy selected event to clipboard
+        /// </summary>
+        private void CopyEvent_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (EventLogList.SelectedItem is EventDisplayModel selectedEvent)
+                {
+                    var eventText = $"[{selectedEvent.Timestamp:yyyy-MM-dd HH:mm:ss}] {selectedEvent.EventType} - {selectedEvent.Description}";
+                    Clipboard.SetText(eventText);
+                    _logger.LogDebug("Event copied to clipboard");
+                }
+                else
+                {
+                    System.Windows.MessageBox.Show("Please select an event to copy.", "No Event Selected", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error copying event to clipboard");
+                System.Windows.MessageBox.Show($"Failed to copy event: {ex.Message}", "Copy Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Copy all events to clipboard
+        /// </summary>
+        private void CopyAllEvents_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_eventLog.Count == 0)
+                {
+                    System.Windows.MessageBox.Show("No events to copy.", "No Events", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var allEventsText = new StringBuilder();
+                allEventsText.AppendLine("DeskDefender Event Log");
+                allEventsText.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                allEventsText.AppendLine($"Total Events: {_eventLog.Count}");
+                allEventsText.AppendLine(new string('=', 50));
+                allEventsText.AppendLine();
+
+                foreach (var eventItem in _eventLog.OrderBy(e => e.Timestamp))
+                {
+                    allEventsText.AppendLine($"[{eventItem.Timestamp:yyyy-MM-dd HH:mm:ss}] {eventItem.EventType} - {eventItem.Description}");
+                }
+
+                Clipboard.SetText(allEventsText.ToString());
+                _logger.LogDebug("All events copied to clipboard");
+                
+                System.Windows.MessageBox.Show($"Copied {_eventLog.Count} events to clipboard.", "Copy Complete", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error copying all events to clipboard");
+                System.Windows.MessageBox.Show($"Failed to copy events: {ex.Message}", "Copy Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Test database persistence by inserting and retrieving a mock event
+        /// </summary>
+        private async void TestDatabase_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _logger.LogInformation("Starting comprehensive database persistence test...");
+                
+                var message = new System.Text.StringBuilder();
+                message.AppendLine("🔍 COMPREHENSIVE DATABASE PERSISTENCE TEST");
+                message.AppendLine($"Test Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                message.AppendLine();
+                
+                // Check monitoring status
+                message.AppendLine("📊 MONITORING STATUS:");
+                message.AppendLine($"- Monitoring Active: {(_monitoringService != null ? "YES" : "NO")}");
+                if (_monitoringService != null)
+                {
+                    // Add more monitoring details if available
+                    message.AppendLine($"- Monitor Service Type: {_monitoringService.GetType().Name}");
+                }
+                message.AppendLine();
+                
+                // Create a test event
+                var testEvent = new EventLog
+                {
+                    Id = Guid.NewGuid(),
+                    Timestamp = DateTime.UtcNow,
+                    EventType = "System",
+                    Description = "Database Test Event - " + DateTime.Now.ToString("HH:mm:ss"),
+                    Severity = EventSeverity.Info,
+                    IsAlert = false,
+                    Details = "This is a test event to verify database persistence",
+                    Source = "DatabaseTest"
+                };
+                
+                message.AppendLine("💾 DATABASE SAVE TEST:");
+
+                // Save to database using the event logger service
+                try
+                {
+                    await _eventLogger.LogEventAsync(testEvent);
+                    message.AppendLine($"✅ Test event saved successfully (ID: {testEvent.Id})");
+                    _logger.LogInformation("Test event saved to database with ID: {EventId}", testEvent.Id);
+                }
+                catch (Exception saveEx)
+                {
+                    message.AppendLine($"❌ SAVE FAILED: {saveEx.Message}");
+                    message.AppendLine($"Exception Type: {saveEx.GetType().Name}");
+                    if (saveEx.InnerException != null)
+                    {
+                        message.AppendLine($"Inner Exception: {saveEx.InnerException.Message}");
+                    }
+                    _logger.LogError(saveEx, "Failed to save test event to database");
+                }
+                
+                message.AppendLine();
+
+                // Wait a moment for the save to complete
+                await Task.Delay(500);
+
+                // Try to retrieve all events from database (last 30 days)
+                message.AppendLine("🔍 DATABASE RETRIEVAL TEST:");
+                try
+                {
+                    var startDate = DateTime.UtcNow.AddDays(-30);
+                    var endDate = DateTime.UtcNow;
+                    var allEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
+                    message.AppendLine($"✅ Retrieved {allEvents.Count()} events from database");
+                    _logger.LogInformation("Retrieved {EventCount} events from database", allEvents.Count());
+
+                    // Look for our test event
+                    var foundTestEvent = allEvents.FirstOrDefault(e => e.Id == testEvent.Id);
+                    message.AppendLine($"Test Event Found: {(foundTestEvent != null ? "✅ YES" : "❌ NO")}");
+                    
+                    if (foundTestEvent != null)
+                    {
+                        message.AppendLine($"Retrieved Event: {foundTestEvent.Description}");
+                        message.AppendLine($"Event Type: {foundTestEvent.EventType}");
+                        message.AppendLine($"Timestamp: {foundTestEvent.Timestamp}");
+                    }
+
+                    // Show recent events from database
+                    message.AppendLine();
+                    message.AppendLine("📋 RECENT EVENTS IN DATABASE:");
+                    if (allEvents.Any())
+                    {
+                        var recentEvents = allEvents.OrderByDescending(e => e.Timestamp).Take(5);
+                        foreach (var evt in recentEvents)
+                        {
+                            message.AppendLine($"- [{evt.Timestamp:HH:mm:ss}] {evt.EventType}: {evt.Description}");
+                        }
+                    }
+                    else
+                    {
+                        message.AppendLine("❌ NO EVENTS FOUND IN DATABASE");
+                        message.AppendLine("This explains why export is failing!");
+                    }
+                    
+                    // Check UI event log count
+                    message.AppendLine();
+                    message.AppendLine("🖥️ UI EVENT LOG STATUS:");
+                    message.AppendLine($"Events in UI: {_eventLog.Count}");
+                    if (_eventLog.Count > 0)
+                    {
+                        message.AppendLine("Recent UI Events:");
+                        foreach (var uiEvent in _eventLog.Take(3))
+                        {
+                            message.AppendLine($"- [{uiEvent.Timestamp:HH:mm:ss}] {uiEvent.EventType}: {uiEvent.Description}");
+                        }
+                    }
+
+                    _logger.LogInformation("Database test completed. Found test event: {Found}", foundTestEvent != null);
+                    
+                    System.Windows.MessageBox.Show(message.ToString(), "Database Test Results", 
+                        MessageBoxButton.OK, foundTestEvent != null ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                }
+                catch (Exception retrieveEx)
+                {
+                    message.AppendLine($"❌ RETRIEVAL FAILED: {retrieveEx.Message}");
+                    message.AppendLine($"Exception Type: {retrieveEx.GetType().Name}");
+                    _logger.LogError(retrieveEx, "Failed to retrieve events from database");
+                    
+                    System.Windows.MessageBox.Show(message.ToString(), "Database Test Error", 
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Database test failed");
+                System.Windows.MessageBox.Show($"Database test failed: {ex.Message}\n\nStack trace:\n{ex.StackTrace}", 
+                    "Database Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
         
         #endregion
         
@@ -474,8 +702,8 @@ namespace DeskDefender
 
         public EventDisplayModel(EventLog eventLog)
         {
-            EventType = eventLog.EventType;
-            Description = eventLog.Description;
+            EventType = eventLog.EventType ?? "Unknown";
+            Description = eventLog.Description ?? "No description";
             Timestamp = eventLog.Timestamp;
             AlertSent = eventLog.AlertSent;
             SeverityColor = GetSeverityBrush(eventLog.Severity);
@@ -496,8 +724,7 @@ namespace DeskDefender
             {
                 EventSeverity.Critical => new SolidColorBrush(Colors.Red),        // Red for critical
                 EventSeverity.High => new SolidColorBrush(Colors.Red),             // Red for high
-                EventSeverity.Medium => new SolidColorBrush(Colors.Yellow),        // Yellow for medium
-                EventSeverity.Warning => new SolidColorBrush(Colors.Yellow),       // Yellow for warning
+                EventSeverity.Medium or EventSeverity.Warning => new SolidColorBrush(Colors.Yellow), // Yellow for medium/warning
                 EventSeverity.Low => new SolidColorBrush(Colors.Green),            // Green for low
                 EventSeverity.Info => new SolidColorBrush(Colors.Gray),            // Gray for info
                 _ => new SolidColorBrush(Colors.Gray)                              // Gray for unknown

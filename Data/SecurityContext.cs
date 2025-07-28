@@ -122,6 +122,13 @@ namespace DeskDefender.Data
                     .IsRequired()
                     .HasDefaultValue(false);
 
+                entity.Property(e => e.IsAlert)
+                    .IsRequired()
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.Details)
+                    .HasMaxLength(2000);
+
                 entity.Property(e => e.Source)
                     .HasMaxLength(100);
 
@@ -139,13 +146,14 @@ namespace DeskDefender.Data
                     .HasDatabaseName("IX_Events_Timestamp_EventType");
             });
 
-            // Configure derived event types using Table Per Hierarchy (TPH) strategy
-            modelBuilder.Entity<InputEvent>()
-                .HasBaseType<EventLog>();
+            modelBuilder.Entity<InputEvent>(entity =>
+            {
+                entity.ToTable("InputEvents");
+            });
 
             modelBuilder.Entity<CameraEvent>(entity =>
             {
-                entity.HasBaseType<EventLog>();
+                entity.ToTable("CameraEvents");
                 
                 // Configure Size type conversion for FrameResolution
                 entity.Property(e => e.FrameResolution)
@@ -155,25 +163,19 @@ namespace DeskDefender.Data
                     )
                     .HasMaxLength(20);
                     
-                // Configure enum conversions
                 entity.Property(e => e.DetectionType)
                     .HasConversion<int>();
             });
 
-            modelBuilder.Entity<LoginEvent>()
-                .HasBaseType<EventLog>();
+            modelBuilder.Entity<LoginEvent>(entity =>
+            {
+                entity.ToTable("LoginEvents");
+            });
 
-            modelBuilder.Entity<UsbEvent>()
-                .HasBaseType<EventLog>();
-
-            // Configure discriminator for TPH inheritance
-            modelBuilder.Entity<EventLog>()
-                .HasDiscriminator<string>("EventType")
-                .HasValue<EventLog>("Base")
-                .HasValue<InputEvent>("Input")
-                .HasValue<CameraEvent>("Camera")
-                .HasValue<LoginEvent>("Login")
-                .HasValue<UsbEvent>("USB");
+            modelBuilder.Entity<UsbEvent>(entity =>
+            {
+                entity.ToTable("UsbEvents");
+            });
         }
 
         #endregion

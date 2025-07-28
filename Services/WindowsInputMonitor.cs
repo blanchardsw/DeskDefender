@@ -105,7 +105,7 @@ namespace DeskDefender.Services
         private DateTime _sessionStartTime;
         private DateTime _lastInputTime;
         private DateTime _lastEventTime;
-        private TimeSpan _sensitivityThreshold = TimeSpan.FromSeconds(5); // Reduced from 30 to 5 seconds
+        private TimeSpan _sensitivityThreshold = TimeSpan.FromSeconds(30); // Default 30 seconds, should be configurable
         
         // Performance optimization for mouse movement
         private DateTime _lastMouseMoveTime;
@@ -356,8 +356,8 @@ namespace DeskDefender.Services
                     
                     _logger.LogDebug("[INPUT] Keyboard input detected: VK_{VirtualKeyCode:X2}", virtualKeyCode);
                     
-                    // Legacy event generation (still needed for compatibility)
-                    CheckAndGenerateEvent();
+                    // Note: Removed immediate CheckAndGenerateEvent() call to respect interval throttling
+                    // The batching service will handle event generation based on configured intervals
                 }
             }
             catch (Exception ex)
@@ -395,7 +395,7 @@ namespace DeskDefender.Services
                         _lastInputTime = timestamp;
                         
                         _logger.LogDebug("[INPUT] Left mouse click detected at ({X}, {Y})", cursorPos.X, cursorPos.Y);
-                        CheckAndGenerateEvent();
+                        // Note: Removed immediate CheckAndGenerateEvent() to respect interval throttling
                     }
                     else if (wParam == (IntPtr)WM_RBUTTONDOWN)
                     {
@@ -407,7 +407,7 @@ namespace DeskDefender.Services
                         _lastInputTime = timestamp;
                         
                         _logger.LogDebug("[INPUT] Right mouse click detected at ({X}, {Y})", cursorPos.X, cursorPos.Y);
-                        CheckAndGenerateEvent();
+                        // Note: Removed immediate CheckAndGenerateEvent() to respect interval throttling
                     }
                     else if (wParam == (IntPtr)WM_MOUSEMOVE)
                     {

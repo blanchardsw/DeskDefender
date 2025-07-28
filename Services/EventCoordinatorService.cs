@@ -84,11 +84,11 @@ namespace DeskDefender.Services
         /// <summary>
         /// Event handler for when a summary is ready from the batching service
         /// </summary>
-        private void OnSummaryReady(object? sender, EventSummary summary)
+        private async void OnSummaryReady(object? sender, EventSummary summary)
         {
             try
             {
-                _displayService.DisplaySummary(summary);
+                await _displayService.DisplaySummary(summary);
             }
             catch (Exception ex)
             {

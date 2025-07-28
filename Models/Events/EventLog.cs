@@ -48,6 +48,16 @@ namespace DeskDefender.Models.Events
         public bool AlertSent { get; set; }
 
         /// <summary>
+        /// Whether this event is marked as an alert
+        /// </summary>
+        public bool IsAlert { get; set; }
+
+        /// <summary>
+        /// Additional details about the event
+        /// </summary>
+        public string? Details { get; set; }
+
+        /// <summary>
         /// Source component that generated the event
         /// </summary>
         public string? Source { get; set; }
