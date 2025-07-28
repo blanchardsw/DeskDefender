@@ -80,17 +80,17 @@ namespace DeskDefender.Services
                     _logger.LogWarning("Database size ({SizeMB:F2} MB) exceeds maximum ({MaxSizeMB} MB)", sizeInMB, maxSizeMB);
                     
                     // Show warning to user on UI thread
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        var result = MessageBox.Show(
+                        var result = System.Windows.MessageBox.Show(
                             $"Database size ({sizeInMB:F1} MB) exceeds the configured limit ({maxSizeMB} MB).\n\n" +
                             "Would you like to purge old events to reduce database size?\n\n" +
                             "This will permanently delete events older than the configured retention period.",
                             "Database Size Warning",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Warning);
+                            System.Windows.MessageBoxButton.YesNo,
+                            System.Windows.MessageBoxImage.Warning);
 
-                        if (result == MessageBoxResult.Yes)
+                        if (result == System.Windows.MessageBoxResult.Yes)
                         {
                             // Perform aggressive purging
                             _ = Task.Run(async () =>
@@ -100,26 +100,26 @@ namespace DeskDefender.Services
                                     await PurgeOldEventsAsync(aggressive: true);
                                     
                                     // Show completion message
-                                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                                     {
-                                        MessageBox.Show(
+                                        System.Windows.MessageBox.Show(
                                             "Database purging completed successfully.",
                                             "Purge Complete",
-                                            MessageBoxButton.OK,
-                                            MessageBoxImage.Information);
+                                            System.Windows.MessageBoxButton.OK,
+                                            System.Windows.MessageBoxImage.Information);
                                     });
                                 }
                                 catch (Exception ex)
                                 {
                                     _logger.LogError(ex, "Error during aggressive database purging");
                                     
-                                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                                     {
-                                        MessageBox.Show(
+                                        System.Windows.MessageBox.Show(
                                             $"Error during database purging: {ex.Message}",
                                             "Purge Error",
-                                            MessageBoxButton.OK,
-                                            MessageBoxImage.Error);
+                                            System.Windows.MessageBoxButton.OK,
+                                            System.Windows.MessageBoxImage.Error);
                                     });
                                 }
                             });

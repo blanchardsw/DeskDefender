@@ -77,11 +77,11 @@ namespace DeskDefender.Windows
                                    $"Alert Sent: {AlertStatusText.Text}\n" +
                                    $"Description:\n{FullDescriptionText.Text}";
 
-                Clipboard.SetText(clipboardText);
+                System.Windows.Clipboard.SetText(clipboardText);
                 
                 // Show brief confirmation
-                var originalContent = ((Button)sender).Content;
-                ((Button)sender).Content = "Copied!";
+                var originalContent = ((System.Windows.Controls.Button)sender).Content;
+                ((System.Windows.Controls.Button)sender).Content = "Copied!";
                 
                 // Reset button text after 2 seconds
                 var timer = new System.Windows.Threading.DispatcherTimer
@@ -90,15 +90,15 @@ namespace DeskDefender.Windows
                 };
                 timer.Tick += (s, args) =>
                 {
-                    ((Button)sender).Content = originalContent;
+                    ((System.Windows.Controls.Button)sender).Content = originalContent;
                     timer.Stop();
                 };
                 timer.Start();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error", 
-                               MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Error", 
+                               System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         }
 

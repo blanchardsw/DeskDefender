@@ -122,10 +122,75 @@ public class CompositeMonitoringService : IMonitoringService
 - [ ] Error handling and recovery
 - [ ] Performance monitoring and optimization
 
-### Phase 2: Security & Usability Enhancements
-**Goal**: Add advanced detection capabilities and improve user experience
+### Phase 2: Session Lock Detection & Background Monitoring
+**Goal**: Ensure continuous security monitoring even when Windows screen is locked and implement system tray functionality
 
-#### 2.1 Login Attempt Detection
+#### 2.1 Session State Monitoring
+```csharp
+public interface ISessionMonitor
+{
+    event EventHandler<SessionStateChangedEventArgs> SessionStateChanged;
+    bool IsSessionLocked { get; }
+    void StartMonitoring();
+    void StopMonitoring();
+}
+
+public class WindowsSessionMonitor : ISessionMonitor
+{
+    // SystemEvents.SessionSwitch event handling
+    // Track lock/unlock events with timestamps
+    // Maintain session state persistence
+}
+```
+- [ ] Windows session lock/unlock detection via SystemEvents.SessionSwitch
+- [ ] Session state event logging with security context
+- [ ] Background service continuity during locked sessions
+- [ ] Graceful handling of camera access restrictions during lock
+
+#### 2.2 System Tray Integration
+```csharp
+public interface ITrayService
+{
+    void MinimizeToTray();
+    void RestoreFromTray();
+    void ShowTrayNotification(string title, string message);
+}
+
+public class SystemTrayService : ITrayService
+{
+    // NotifyIcon implementation
+    // Context menu with monitoring controls
+    // Tray notifications for security events
+}
+```
+- [ ] Minimize to system tray functionality
+- [ ] Tray icon with context menu (Show/Hide, Start/Stop Monitoring, Exit)
+- [ ] Tray notifications for critical security events
+- [ ] Persistent background operation when minimized
+
+#### 2.3 Background Service Architecture
+```csharp
+public interface IBackgroundMonitoringService
+{
+    void EnsureContinuousMonitoring();
+    void HandleSessionStateChange(SessionState newState);
+}
+
+public class BackgroundMonitoringService : IBackgroundMonitoringService
+{
+    // Coordinate all monitoring services during session changes
+    // Maintain service state across lock/unlock cycles
+}
+```
+- [ ] Service coordination during session state changes
+- [ ] Input monitoring continuity during locked sessions
+- [ ] Database operations persistence during background mode
+- [ ] Event correlation between locked and unlocked sessions
+
+### Phase 3: Advanced Security Detection
+**Goal**: Add advanced detection capabilities and security monitoring features
+
+#### 3.1 Login Attempt Detection
 ```csharp
 public interface ILoginMonitor
 {
@@ -143,7 +208,7 @@ public class WindowsLoginMonitor : ILoginMonitor
 - [ ] Successful login tracking
 - [ ] User session correlation
 
-#### 2.2 Screen Capture on Activity
+#### 3.2 Screen Capture on Activity
 ```csharp
 public interface IScreenCaptureService
 {
@@ -162,7 +227,7 @@ public class ScreenCaptureService : IScreenCaptureService
 - [ ] Multi-monitor support
 - [ ] Screenshot compression and storage
 
-#### 2.3 Idle Time Monitoring
+#### 3.3 Idle Time Monitoring
 ```csharp
 public interface IIdleMonitor
 {
@@ -180,7 +245,7 @@ public class WindowsIdleMonitor : IIdleMonitor
 - [ ] Activity pattern analysis
 - [ ] Idle/active state transitions
 
-#### 2.4 USB Device Detection
+#### 3.4 USB Device Detection
 ```csharp
 public interface IUsbMonitor
 {
@@ -198,7 +263,7 @@ public class UsbMonitor : IUsbMonitor
 - [ ] Whitelist/blacklist functionality
 - [ ] Device access logging
 
-#### 2.5 Facial Recognition for Known Users
+#### 3.5 Facial Recognition for Known Users
 ```csharp
 public interface IFaceRecognitionService
 {
@@ -216,10 +281,10 @@ public class OpenCvFaceRecognitionService : IFaceRecognitionService
 - [ ] Face comparison algorithms
 - [ ] False positive reduction
 
-### Phase 3: Advanced Features
-**Goal**: Implement sophisticated monitoring and security features
+### Phase 4: Advanced Features & UI Polish
+**Goal**: Implement sophisticated monitoring and security features plus final UI improvements
 
-#### 3.1 Remote Control & Live Feed
+#### 4.1 Remote Control & Live Feed
 ```csharp
 public interface IRemoteServer
 {

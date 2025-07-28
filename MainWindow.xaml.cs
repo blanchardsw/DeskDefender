@@ -35,6 +35,11 @@ namespace DeskDefender
         private readonly EventDisplayService _eventDisplayService;
         private readonly AppSettings _settings;
         
+        // Phase 2: Session Lock Detection & Background Monitoring Services
+        private readonly ISessionMonitor _sessionMonitor;
+        private readonly ITrayService _trayService;
+        private readonly IBackgroundMonitoringService _backgroundMonitoringService;
+        
         private readonly ObservableCollection<EventDisplayModel> _recentEvents;
         private readonly ObservableCollection<EventDisplayModel> _eventLog;
         private readonly DispatcherTimer _uiUpdateTimer;
@@ -53,6 +58,11 @@ namespace DeskDefender
             _eventCoordinator = _serviceProvider.GetRequiredService<EventCoordinatorService>();
             _eventDisplayService = _serviceProvider.GetRequiredService<EventDisplayService>();
             _settings = _serviceProvider.GetRequiredService<AppSettings>();
+            
+            // Phase 2: Initialize session lock detection & background monitoring services
+            _sessionMonitor = _serviceProvider.GetRequiredService<ISessionMonitor>();
+            _trayService = _serviceProvider.GetRequiredService<ITrayService>();
+            _backgroundMonitoringService = _serviceProvider.GetRequiredService<IBackgroundMonitoringService>();
             
             InitializeComponent();
             
@@ -82,7 +92,53 @@ namespace DeskDefender
             // Event subscription is now handled by EventCoordinatorService
             // which was started during application initialization
             
+            // Phase 2: Initialize session monitoring and tray services
+            InitializePhase2Services();
+            
             _isInitialized = true;
+        }
+
+        /// <summary>
+        /// Initializes Phase 2 services: session monitoring, tray integration, and background monitoring
+        /// </summary>
+        private void InitializePhase2Services()
+        {
+            try
+            {
+                _logger.LogInformation("Initializing Phase 2 services: session monitoring, tray, and background monitoring");
+
+                // Subscribe to tray service events
+                _trayService.ShowMainWindow += OnTrayShowMainWindow;
+                _trayService.ExitApplication += OnTrayExitApplication;
+                _trayService.ToggleMonitoring += OnTrayToggleMonitoring;
+
+                // Subscribe to session state changes for UI updates
+                _sessionMonitor.SessionStateChanged += OnSessionStateChanged;
+
+                // Subscribe to background monitoring status changes
+                _backgroundMonitoringService.StatusChanged += OnBackgroundMonitoringStatusChanged;
+
+                // Initialize tray service
+                _trayService.Initialize();
+
+                // Start background monitoring coordination
+                _backgroundMonitoringService.StartBackgroundMonitoring();
+
+                // Update tray with initial monitoring status
+                _trayService.UpdateMonitoringStatus(_monitoringService.IsRunning);
+
+                // Handle window state changes for minimize to tray
+                this.StateChanged += OnWindowStateChanged;
+                this.Closing += OnWindowClosing;
+
+                _logger.LogInformation("Phase 2 services initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing Phase 2 services");
+                System.Windows.MessageBox.Show($"Error initializing background monitoring: {ex.Message}", "Initialization Error", 
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
         }
 
         private void UpdateUI()
@@ -107,6 +163,9 @@ namespace DeskDefender
                     StatusText.Text = "Monitoring Stopped";
                     ToggleMonitoringButton.Content = "Start Monitoring";
                     ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 174, 96)); // Green for start
+                    
+                    // Phase 2: Update tray service with new monitoring status
+                    _trayService.UpdateMonitoringStatus(false);
                 }
                 else
                 {
@@ -116,12 +175,15 @@ namespace DeskDefender
                     StatusText.Text = "Monitoring Active";
                     ToggleMonitoringButton.Content = "Stop Monitoring";
                     ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for stop
+                    
+                    // Phase 2: Update tray service with new monitoring status
+                    _trayService.UpdateMonitoringStatus(true);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error toggling monitoring");
-                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Error: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
         }
 
@@ -333,17 +395,17 @@ namespace DeskDefender
         
         private void ViewEventLog_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Event log window not implemented in Phase 1", "Info");
+            System.Windows.MessageBox.Show("Event log window not implemented in Phase 1", "Info");
         }
         
         private void ViewStatistics_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Statistics window not implemented in Phase 1", "Info");
+            System.Windows.MessageBox.Show("Statistics window not implemented in Phase 1", "Info");
         }
         
         private void About_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("DeskDefender v1.0\nSecurity Monitoring System", "About");
+            System.Windows.MessageBox.Show("DeskDefender v1.0\nSecurity Monitoring System", "About");
         }
         
         private async void TestAlert_Click(object sender, RoutedEventArgs e)
@@ -351,11 +413,11 @@ namespace DeskDefender
             try
             {
                 await _alertService.SendAlertAsync("Test alert from DeskDefender");
-                MessageBox.Show("Test alert sent!", "Success");
+                System.Windows.MessageBox.Show("Test alert sent!", "Success");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Alert failed: {ex.Message}", "Error");
+                System.Windows.MessageBox.Show($"Alert failed: {ex.Message}", "Error");
             }
         }
 
@@ -396,7 +458,7 @@ namespace DeskDefender
                 _logger.LogInformation("Retrieved {EventCount} existing events from database", existingEvents.Count());
                 
                 // Clear existing UI events and populate with database events
-                Application.Current.Dispatcher.Invoke(() =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
                     _eventLog.Clear();
                     _recentEvents.Clear();
@@ -616,7 +678,7 @@ namespace DeskDefender
                 if (EventLogList.SelectedItem is EventDisplayModel selectedEvent)
                 {
                     var eventText = $"[{selectedEvent.Timestamp:yyyy-MM-dd HH:mm:ss}] {selectedEvent.EventType} - {selectedEvent.Description}";
-                    Clipboard.SetText(eventText);
+                    System.Windows.Clipboard.SetText(eventText);
                     _logger.LogDebug("Event copied to clipboard");
                 }
                 else
@@ -659,7 +721,7 @@ namespace DeskDefender
                     allEventsText.AppendLine($"[{eventItem.Timestamp:yyyy-MM-dd HH:mm:ss}] {eventItem.EventType} - {eventItem.Description}");
                 }
 
-                Clipboard.SetText(allEventsText.ToString());
+                System.Windows.Clipboard.SetText(allEventsText.ToString());
                 _logger.LogDebug("All events copied to clipboard");
                 
                 System.Windows.MessageBox.Show($"Copied {_eventLog.Count} events to clipboard.", "Copy Complete", 
@@ -811,6 +873,161 @@ namespace DeskDefender
         
         #endregion
         
+        #region Phase 2: Session Lock Detection & Background Monitoring Event Handlers
+
+        /// <summary>
+        /// Handles tray service request to show main window
+        /// </summary>
+        private void OnTrayShowMainWindow(object? sender, EventArgs e)
+        {
+            try
+            {
+                this.Show();
+                this.WindowState = WindowState.Normal;
+                this.Activate();
+                _logger.LogDebug("Main window restored from system tray");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restoring window from tray");
+            }
+        }
+
+        /// <summary>
+        /// Handles tray service request to exit application
+        /// </summary>
+        private void OnTrayExitApplication(object? sender, EventArgs e)
+        {
+            try
+            {
+                _logger.LogInformation("Exit requested from system tray");
+                System.Windows.Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exiting application from tray");
+            }
+        }
+
+        /// <summary>
+        /// Handles tray service request to toggle monitoring
+        /// </summary>
+        private void OnTrayToggleMonitoring(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Use the existing toggle monitoring logic
+                ToggleMonitoring_Click(sender, new RoutedEventArgs());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling monitoring from tray");
+            }
+        }
+
+        /// <summary>
+        /// Handles session state changes from the session monitor
+        /// </summary>
+        private void OnSessionStateChanged(object? sender, SessionStateChangedEventArgs e)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _logger.LogInformation("Session state changed: {State} at {Timestamp}", e.NewState, e.Timestamp);
+                    
+                    // Update UI to reflect session state
+                    var sessionStatus = e.NewState switch
+                    {
+                        SessionState.Locked => "🔒 Session Locked - Background monitoring active",
+                        SessionState.Unlocked => "🔓 Session Unlocked - Full monitoring active",
+                        SessionState.RemoteConnect => "🌐 Remote session connected",
+                        SessionState.RemoteDisconnect => "🌐 Remote session disconnected",
+                        SessionState.Logon => "👤 User logged on",
+                        SessionState.Logoff => "👤 User logged off",
+                        _ => $"Session: {e.NewState}"
+                    };
+                    
+                    // You could add a session status label to the UI to show this
+                    // For now, we'll just log it
+                    _logger.LogDebug("UI updated for session state: {Status}", sessionStatus);
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling session state change in UI");
+            }
+        }
+
+        /// <summary>
+        /// Handles background monitoring status changes
+        /// </summary>
+        private void OnBackgroundMonitoringStatusChanged(object? sender, BackgroundMonitoringStatusEventArgs e)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _logger.LogDebug("Background monitoring status changed: {ActiveServices}/{TotalServices} services active", 
+                        e.Status.ActiveServicesCount, 4);
+                    
+                    // Show tray notification for critical service failures
+                    if (!e.Status.AllCriticalServicesActive)
+                    {
+                        _trayService.ShowTrayNotification(
+                            "DeskDefender Warning", 
+                            "Some monitoring services are not active. Check the application.",
+                            5000);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling background monitoring status change");
+            }
+        }
+
+        /// <summary>
+        /// Handles window state changes for minimize to tray functionality
+        /// </summary>
+        private void OnWindowStateChanged(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (this.WindowState == WindowState.Minimized)
+                {
+                    this.Hide();
+                    _trayService.MinimizeToTray();
+                    _logger.LogDebug("Window minimized to system tray");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling window state change");
+            }
+        }
+
+        /// <summary>
+        /// Handles window closing event to minimize to tray instead of closing
+        /// </summary>
+        private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            try
+            {
+                // Cancel the close and minimize to tray instead
+                e.Cancel = true;
+                this.WindowState = WindowState.Minimized;
+                _logger.LogDebug("Window close intercepted - minimizing to tray instead");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling window closing");
+            }
+        }
+
+
+
+        #endregion
 
     }
 

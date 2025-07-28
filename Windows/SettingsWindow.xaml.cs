@@ -71,8 +71,8 @@ namespace DeskDefender.Windows
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load current settings");
-                MessageBox.Show("Failed to load current settings. Using default values.", 
-                               "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("Failed to load current settings. Using default values.", 
+                               "Warning", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         }
 
@@ -195,8 +195,8 @@ namespace DeskDefender.Windows
                 _logger.LogInformation("Settings applied and saved successfully");
                 
                 // Show brief confirmation
-                var originalContent = ((Button)sender)?.Content;
-                if (sender is Button button)
+                var originalContent = ((System.Windows.Controls.Button)sender)?.Content;
+                if (sender is System.Windows.Controls.Button button)
                 {
                     button.Content = "Applied!";
                     
@@ -218,8 +218,8 @@ namespace DeskDefender.Windows
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to apply settings");
-                MessageBox.Show($"Failed to apply settings: {ex.Message}", 
-                               "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Failed to apply settings: {ex.Message}", 
+                               "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
         }

@@ -45,10 +45,10 @@ namespace DeskDefender.Services
         {
             try
             {
-                var app = Application.Current;
+                var app = System.Windows.Application.Current;
                 if (app == null)
                 {
-                    _logger.LogWarning("Cannot apply theme: Application.Current is null");
+                    _logger.LogWarning("Cannot apply theme: System.Windows.Application.Current is null");
                     return;
                 }
 
@@ -107,7 +107,7 @@ namespace DeskDefender.Services
         /// <summary>
         /// Remove existing theme resource dictionaries
         /// </summary>
-        private void RemoveExistingThemeResources(Application app)
+        private void RemoveExistingThemeResources(System.Windows.Application app)
         {
             try
             {

@@ -19,7 +19,7 @@ namespace DeskDefender
     /// Implements the Composition Root pattern for dependency management
     /// Uses Microsoft.Extensions.DependencyInjection for IoC container
     /// </summary>
-    public partial class App : Application
+    public partial class App : System.Windows.Application
     {
         private IHost _host;
         private IServiceProvider _serviceProvider;
@@ -118,8 +118,8 @@ namespace DeskDefender
                 Console.WriteLine($"[ERROR] {errorMessage}");
                 System.Diagnostics.Debug.WriteLine($"[ERROR] {errorMessage}");
                 
-                MessageBox.Show(errorMessage, "Startup Error", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show(errorMessage, "Startup Error", 
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 Shutdown(1);
             }
         }
@@ -231,6 +231,11 @@ namespace DeskDefender
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
                     services.AddSingleton<IAlertService, TwilioAlertService>();
                     services.AddSingleton<IMonitorService, CompositeMonitoringService>();
+                    
+                    // Phase 2: Session Lock Detection & Background Monitoring Services
+                    services.AddSingleton<ISessionMonitor, WindowsSessionMonitor>();
+                    services.AddSingleton<ITrayService, WorkingTrayService>();
+                    services.AddSingleton<IBackgroundMonitoringService, BackgroundMonitoringService>();
 
                     // UI
                     services.AddTransient<MainWindow>();
