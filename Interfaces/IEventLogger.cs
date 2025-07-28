@@ -36,5 +36,17 @@ namespace DeskDefender.Interfaces
         /// </summary>
         /// <param name="olderThan">Delete events older than this date</param>
         Task ClearOldEventsAsync(DateTime olderThan);
+
+        /// <summary>
+        /// Deletes events before a specific date
+        /// </summary>
+        /// <param name="beforeDate">Delete events before this date</param>
+        Task DeleteEventsBeforeDateAsync(DateTime beforeDate);
+
+        /// <summary>
+        /// Logs an event asynchronously (alternative method name)
+        /// </summary>
+        /// <param name="eventLog">The event to log</param>
+        Task LogEventAsync(EventLog eventLog);
     }
 }

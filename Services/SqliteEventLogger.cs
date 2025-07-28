@@ -496,6 +496,51 @@ namespace DeskDefender.Services
 
         #endregion
 
+        #region Additional Interface Methods
+
+        /// <summary>
+        /// Deletes events before a specific date
+        /// </summary>
+        /// <param name="beforeDate">Delete events before this date</param>
+        public async Task DeleteEventsBeforeDateAsync(DateTime beforeDate)
+        {
+            try
+            {
+                using var context = _contextFactory.CreateDbContext();
+                
+                var eventsToDelete = context.EventLogs.Where(e => e.Timestamp < beforeDate);
+                var deleteCount = await eventsToDelete.CountAsync();
+                
+                if (deleteCount > 0)
+                {
+                    context.EventLogs.RemoveRange(eventsToDelete);
+                    await context.SaveChangesAsync();
+                    
+                    _logger.LogInformation("Deleted {DeleteCount} events before {BeforeDate}", deleteCount, beforeDate);
+                }
+                else
+                {
+                    _logger.LogDebug("No events found to delete before {BeforeDate}", beforeDate);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting events before {BeforeDate}", beforeDate);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Logs an event asynchronously (alternative method name)
+        /// </summary>
+        /// <param name="eventLog">The event to log</param>
+        public async Task LogEventAsync(EventLog eventLog)
+        {
+            await LogAsync(eventLog);
+        }
+
+        #endregion
+
         #region IDisposable Implementation
 
         /// <summary>

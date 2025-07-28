@@ -1,6 +1,8 @@
 using System;
+using System.Threading.Tasks;
 using DeskDefender.Models.Events;
 using Microsoft.Extensions.Logging;
+using DeskDefender.Interfaces;
 
 namespace DeskDefender.Services
 {
@@ -10,11 +12,18 @@ namespace DeskDefender.Services
     public class EventDisplayService
     {
         private readonly ILogger<EventDisplayService> _logger;
+        private readonly IEventLogger _eventLogger;
 
-        public EventDisplayService(ILogger<EventDisplayService> logger)
+        public EventDisplayService(ILogger<EventDisplayService> logger, IEventLogger eventLogger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _eventLogger = eventLogger ?? throw new ArgumentNullException(nameof(eventLogger));
         }
+
+        /// <summary>
+        /// Event fired when a summary should be displayed in the UI
+        /// </summary>
+        public event Action<EventSummary> SummaryForUI;
 
         /// <summary>
         /// Displays an event summary to the user
@@ -24,6 +33,12 @@ namespace DeskDefender.Services
         {
             try
             {
+                // Fire event for UI to receive the summary
+                SummaryForUI?.Invoke(summary);
+                
+                // Save summary to database for persistence
+                SaveSummaryToDatabase(summary);
+                
                 // Display to console for now (can be extended to UI later)
                 var summaryText = summary.GetSummaryDescription();
                 
@@ -100,6 +115,76 @@ namespace DeskDefender.Services
             Console.ResetColor();
             
             _logger.LogInformation("Event monitoring startup info displayed");
+        }
+
+        /// <summary>
+        /// Save event summary to database for persistence between sessions
+        /// </summary>
+        /// <param name="summary">The event summary to save</param>
+        private void SaveSummaryToDatabase(EventSummary summary)
+        {
+            try
+            {
+                // Convert EventSummary to EventLog for database storage
+                var eventLog = new EventLog
+                {
+                    EventType = "EventSummary",
+                    Description = summary.GetSummaryDescription(),
+                    Timestamp = summary.IntervalStart,
+                    Severity = DetermineSeverity(summary),
+                    IsAlert = false,
+                    Details = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        IntervalStart = summary.IntervalStart,
+                        IntervalEnd = summary.IntervalEnd,
+                        KeyboardActivity = summary.KeyboardActivity,
+                        MouseActivity = summary.MouseActivity
+                    })
+                };
+
+                // Save to database asynchronously
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _eventLogger.LogEventAsync(eventLog);
+                        _logger.LogDebug("Event summary saved to database: {Description}", eventLog.Description);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save event summary to database");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error preparing event summary for database storage");
+            }
+        }
+
+        /// <summary>
+        /// Determine severity level for event summary
+        /// </summary>
+        /// <param name="summary">The event summary</param>
+        /// <returns>Appropriate severity level</returns>
+        private EventSeverity DetermineSeverity(EventSummary summary)
+        {
+            // Determine severity based on activity level
+            var hasKeyboard = summary.KeyboardActivity?.HasActivity == true;
+            var hasMouse = summary.MouseActivity?.HasActivity == true;
+            
+            if (hasKeyboard && hasMouse)
+            {
+                return EventSeverity.Medium; // High activity
+            }
+            else if (hasKeyboard || hasMouse)
+            {
+                return EventSeverity.Low; // Some activity
+            }
+            else
+            {
+                return EventSeverity.Info; // No activity
+            }
         }
     }
 }

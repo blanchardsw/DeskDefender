@@ -13,6 +13,7 @@ using System.Windows.Threading;
 using DeskDefender.Interfaces;
 using DeskDefender.Models.Configuration;
 using DeskDefender.Models.Events;
+using DeskDefender.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +30,8 @@ namespace DeskDefender
         private readonly IMonitorService _monitoringService;
         private readonly IEventLogger _eventLogger;
         private readonly IAlertService _alertService;
+        private readonly EventCoordinatorService _eventCoordinator;
+        private readonly EventDisplayService _eventDisplayService;
         private readonly AppSettings _settings;
         
         private readonly ObservableCollection<EventDisplayModel> _recentEvents;
@@ -46,6 +49,8 @@ namespace DeskDefender
             _monitoringService = _serviceProvider.GetRequiredService<IMonitorService>();
             _eventLogger = _serviceProvider.GetRequiredService<IEventLogger>();
             _alertService = _serviceProvider.GetRequiredService<IAlertService>();
+            _eventCoordinator = _serviceProvider.GetRequiredService<EventCoordinatorService>();
+            _eventDisplayService = _serviceProvider.GetRequiredService<EventDisplayService>();
             _settings = _serviceProvider.GetRequiredService<AppSettings>();
             
             InitializeComponent();
@@ -55,6 +60,9 @@ namespace DeskDefender
             
             RecentEventsList.ItemsSource = _recentEvents;
             EventLogList.ItemsSource = _eventLog;
+            
+            // Subscribe to event summaries for UI display
+            _eventDisplayService.SummaryForUI += OnEventSummaryReceived;
             
             _uiUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _uiUpdateTimer.Tick += (s, e) => UpdateUI();
@@ -178,7 +186,23 @@ namespace DeskDefender
 
         private void Settings_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Settings window not implemented in Phase 1", "Info");
+            try
+            {
+                var settingsWindow = new DeskDefender.Windows.SettingsWindow(_serviceProvider)
+                {
+                    Owner = this
+                };
+                settingsWindow.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error opening settings window");
+                System.Windows.MessageBox.Show(
+                    "Failed to open settings window. Please try again.",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
         }
 
         private void Exit_Click(object sender, RoutedEventArgs e) => Close();
@@ -303,6 +327,140 @@ namespace DeskDefender
             }
             base.OnClosing(e);
         }
+        
+        #region Event Summary Handling
+        
+        private void OnEventSummaryReceived(EventSummary summary)
+        {
+            // Ensure UI updates happen on the UI thread
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    // Create an EventLog object for the EventDisplayModel constructor
+                    var eventLog = new EventLog
+                    {
+                        Timestamp = summary.IntervalEnd,
+                        EventType = "Event Summary",
+                        Description = summary.GetSummaryDescription(),
+                        Severity = DetermineEventSeverity(summary),
+                        AlertSent = false
+                    };
+
+                    // Convert EventLog to EventDisplayModel for UI
+                    var displayModel = new EventDisplayModel(eventLog);
+
+                    // Add to recent events (limit to last 50)
+                    _recentEvents.Insert(0, displayModel);
+                    if (_recentEvents.Count > 50)
+                    {
+                        _recentEvents.RemoveAt(_recentEvents.Count - 1);
+                    }
+
+                    // Add to event log (limit to last 1000)
+                    _eventLog.Insert(0, displayModel);
+                    if (_eventLog.Count > 1000)
+                    {
+                        _eventLog.RemoveAt(_eventLog.Count - 1);
+                    }
+
+                    _logger.LogDebug("Event summary added to UI: {Description}", displayModel.Description);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error displaying event summary in UI");
+                }
+            });
+        }
+
+        private EventSeverity DetermineEventSeverity(EventSummary summary)
+        {
+            // Determine severity based on activity level
+            bool hasKeyboardActivity = summary.KeyboardActivity?.KeystrokeCount > 0;
+            bool hasMouseActivity = summary.MouseActivity?.ClickCount > 0 || summary.MouseActivity?.MovementEvents > 0;
+
+            if (hasKeyboardActivity && hasMouseActivity)
+            {
+                return EventSeverity.Info; // Both activities present
+            }
+            else if (hasKeyboardActivity || hasMouseActivity)
+            {
+                return EventSeverity.Low; // Some activity
+            }
+            else
+            {
+                return EventSeverity.Low; // No significant activity
+            }
+        }
+        
+        #endregion
+        
+        #region Event Log Detail Modal
+        
+        private void EventLogList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            try
+            {
+                if (EventLogList.SelectedItem is EventDisplayModel selectedEvent)
+                {
+                    var detailWindow = new DeskDefender.Windows.LogDetailWindow(selectedEvent)
+                    {
+                        Owner = this
+                    };
+                    detailWindow.ShowDialog();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error opening event detail window");
+                System.Windows.MessageBox.Show(
+                    "Failed to open event details. Please try again.",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Export logs to file
+        /// </summary>
+        private async void ExportLogs_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "CSV files (*.csv)|*.csv|JSON files (*.json)|*.json|Text files (*.txt)|*.txt",
+                    DefaultExt = "csv",
+                    FileName = $"DeskDefender_Logs_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    var exportService = _serviceProvider.GetRequiredService<LogExportService>();
+                    await exportService.ExportLogsAsync(saveFileDialog.FileName);
+                    
+                    System.Windows.MessageBox.Show(
+                        $"Logs exported successfully to:\n{saveFileDialog.FileName}",
+                        "Export Complete",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting logs");
+                System.Windows.MessageBox.Show(
+                    $"Failed to export logs: {ex.Message}",
+                    "Export Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+        
+        #endregion
+        
+
     }
 
     public class EventDisplayModel
@@ -336,11 +494,13 @@ namespace DeskDefender
         {
             return severity switch
             {
-                EventSeverity.Critical => new SolidColorBrush(Colors.DarkRed),
-                EventSeverity.High => new SolidColorBrush(Colors.Red),
-                EventSeverity.Medium => new SolidColorBrush(Colors.Orange),
-                EventSeverity.Low => new SolidColorBrush(Colors.Yellow),
-                _ => new SolidColorBrush(Colors.Gray)
+                EventSeverity.Critical => new SolidColorBrush(Colors.Red),        // Red for critical
+                EventSeverity.High => new SolidColorBrush(Colors.Red),             // Red for high
+                EventSeverity.Medium => new SolidColorBrush(Colors.Yellow),        // Yellow for medium
+                EventSeverity.Warning => new SolidColorBrush(Colors.Yellow),       // Yellow for warning
+                EventSeverity.Low => new SolidColorBrush(Colors.Green),            // Green for low
+                EventSeverity.Info => new SolidColorBrush(Colors.Gray),            // Gray for info
+                _ => new SolidColorBrush(Colors.Gray)                              // Gray for unknown
             };
         }
 

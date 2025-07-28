@@ -7,7 +7,9 @@
         mc:Ignorable="d"
         Title="DeskDefender - Security Monitoring" Height="700" Width="1200"
         MinHeight="600" MinWidth="900"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource PrimaryBackgroundBrush}"
+        Foreground="{DynamicResource PrimaryTextBrush}">
     
     <!-- Main Grid Layout -->
     <Grid>
@@ -19,24 +21,41 @@
         </Grid.RowDefinitions>
         
         <!-- Menu Bar -->
-        <Menu Grid.Row="0" Background="#2C3E50">
-            <MenuItem Header="_File" Foreground="White">
-                <MenuItem Header="_Settings" Click="Settings_Click"/>
+        <Menu Grid.Row="0" Background="{DynamicResource PrimaryBackgroundBrush}">
+            <Menu.Resources>
+                <Style TargetType="MenuItem">
+                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSubmenuOpen" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Menu.Resources>
+            <MenuItem Header="_File" Foreground="{DynamicResource PrimaryTextBrush}">
+                <MenuItem Header="_Settings" Click="Settings_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
+                <MenuItem Header="_Export Logs" Click="ExportLogs_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
                 <Separator/>
-                <MenuItem Header="E_xit" Click="Exit_Click"/>
+                <MenuItem Header="E_xit" Click="Exit_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
             </MenuItem>
-            <MenuItem Header="_View" Foreground="White">
-                <MenuItem Header="_Event Log" Click="ViewEventLog_Click"/>
-                <MenuItem Header="_Statistics" Click="ViewStatistics_Click"/>
+            <MenuItem Header="_View" Foreground="{DynamicResource PrimaryTextBrush}">
+                <MenuItem Header="_Event Log" Click="ViewEventLog_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
+                <MenuItem Header="_Statistics" Click="ViewStatistics_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
             </MenuItem>
-            <MenuItem Header="_Help" Foreground="White">
-                <MenuItem Header="_About" Click="About_Click"/>
-                <MenuItem Header="_Test Alert" Click="TestAlert_Click"/>
+            <MenuItem Header="_Help" Foreground="{DynamicResource PrimaryTextBrush}">
+                <MenuItem Header="_About" Click="About_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
+                <MenuItem Header="_Test Alert" Click="TestAlert_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
             </MenuItem>
         </Menu>
         
         <!-- Status Header -->
-        <Border Grid.Row="1" Background="#34495E" Padding="10,5">
+        <Border Grid.Row="1" Background="{DynamicResource SecondaryBackgroundBrush}" Padding="10,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -47,17 +66,17 @@
                 <!-- Monitoring Status -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Ellipse x:Name="StatusIndicator" Width="12" Height="12" Fill="Red" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="StatusText" Text="Monitoring Stopped" Foreground="White" FontWeight="Bold"/>
+                    <TextBlock x:Name="StatusText" Text="Monitoring Stopped" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="Bold"/>
                 </StackPanel>
                 
                 <!-- System Info -->
                 <TextBlock Grid.Column="1" x:Name="SystemInfoText" Text="System: Loading..." 
-                          Foreground="#BDC3C7" HorizontalAlignment="Center"/>
+                          Foreground="{DynamicResource SecondaryTextBrush}" HorizontalAlignment="Center"/>
                 
                 <!-- Toggle Button -->
                 <Button Grid.Column="2" x:Name="ToggleMonitoringButton" Content="Start Monitoring" 
                        Click="ToggleMonitoring_Click" Padding="15,5" 
-                       Background="#27AE60" Foreground="White" BorderThickness="0"
+                       Background="#27AE60" Foreground="{DynamicResource PrimaryTextBrush}" BorderThickness="0"
                        FontWeight="Bold" Cursor="Hand"/>
             </Grid>
         </Border>
@@ -201,15 +220,39 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         
                         <TextBlock Grid.Row="0" Text="Event Log" FontWeight="Bold" 
                                   Background="#ECF0F1" Padding="10,5"/>
                         
+                        <!-- Severity Legend -->
+                        <Border Grid.Row="1" Background="{DynamicResource TertiaryBackgroundBrush}" Padding="10,5" Margin="5">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Severity Legend:" FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                    <Ellipse Width="12" Height="12" Fill="Red" Margin="0,0,5,0"/>
+                                    <TextBlock Text="Critical/High" Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                    <Ellipse Width="12" Height="12" Fill="Yellow" Margin="0,0,5,0"/>
+                                    <TextBlock Text="Medium/Warning" Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                    <Ellipse Width="12" Height="12" Fill="Green" Margin="0,0,5,0"/>
+                                    <TextBlock Text="Low" Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="12" Height="12" Fill="Gray" Margin="0,0,5,0"/>
+                                    <TextBlock Text="Info" Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        
                         <!-- Log Filters -->
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="10,5" Background="#F8F9FA">
-                            <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,5" Background="{DynamicResource TertiaryBackgroundBrush}">
+                            <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{DynamicResource PrimaryTextBrush}"/>
                             <ComboBox x:Name="EventTypeFilter" Width="120" Margin="0,0,10,0"
                                      SelectionChanged="EventTypeFilter_Changed">
                                 <ComboBoxItem Content="All Events" IsSelected="True"/>
@@ -229,8 +272,11 @@
                         </StackPanel>
                         
                         <!-- Event Log List -->
-                        <ListView Grid.Row="2" x:Name="EventLogList" 
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListView Grid.Row="3" x:Name="EventLogList" 
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Background="{DynamicResource SecondaryBackgroundBrush}"
+                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                 MouseDoubleClick="EventLogList_MouseDoubleClick">
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Time" Width="120" 

@@ -66,6 +66,36 @@ namespace DeskDefender
                 eventCoordinator.Start();
                 Console.WriteLine("[DEBUG] Event coordination system started successfully.");
 
+                // Initialize settings service
+                Console.WriteLine("[DEBUG] Initializing settings service...");
+                var settingsService = _serviceProvider.GetRequiredService<SettingsService>();
+                settingsService.LoadSettings();
+                Console.WriteLine("[DEBUG] Settings service initialized successfully.");
+
+                // Initialize theme system with saved theme preference
+                Console.WriteLine("[DEBUG] Initializing theme system...");
+                var themeService = _serviceProvider.GetRequiredService<ThemeService>();
+                var savedTheme = settingsService.Settings.Theme == "Light" ? ThemeService.Theme.Light : ThemeService.Theme.Dark;
+                themeService.ApplyTheme(savedTheme);
+                Console.WriteLine("[DEBUG] Theme system initialized successfully.");
+
+                // Initialize database maintenance service
+                Console.WriteLine("[DEBUG] Initializing database maintenance...");
+                var maintenanceService = _serviceProvider.GetRequiredService<DatabaseMaintenanceService>();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await maintenanceService.PerformMaintenanceAsync();
+                        Console.WriteLine("[DEBUG] Database maintenance completed.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] Database maintenance failed: {ex.Message}");
+                    }
+                });
+                Console.WriteLine("[DEBUG] Database maintenance service initialized.");
+
                 // Create and show main window
                 Console.WriteLine("[DEBUG] Creating main window...");
                 var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
@@ -192,6 +222,10 @@ namespace DeskDefender
                     services.AddSingleton<EventDisplayService>();
                     services.AddSingleton<EventConfigurationService>();
                     services.AddSingleton<EventCoordinatorService>();
+                    services.AddSingleton<ThemeService>();
+                    services.AddSingleton<SettingsService>();
+                    services.AddSingleton<LogExportService>();
+                    services.AddSingleton<DatabaseMaintenanceService>();
                     services.AddSingleton<IInputMonitor, WindowsInputMonitor>();
                     services.AddSingleton<ICameraService, OpenCvCameraService>();
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
