@@ -121,11 +121,14 @@ namespace DeskDefender
                 // Initialize tray service
                 _trayService.Initialize();
 
-                // Start background monitoring coordination
-                _backgroundMonitoringService.StartBackgroundMonitoring();
+                // DO NOT start monitoring automatically - let user control when to start
+                // _backgroundMonitoringService.StartBackgroundMonitoring(); // Removed automatic startup
 
-                // Update tray with initial monitoring status
+                // Update tray with initial monitoring status (should be stopped)
                 _trayService.UpdateMonitoringStatus(_monitoringService.IsRunning);
+
+                // Update UI to reflect initial monitoring status (should be stopped)
+                UpdateUIForMonitoringState(_monitoringService.IsRunning);
 
                 // Handle window state changes for minimize to tray
                 this.StateChanged += OnWindowStateChanged;
@@ -158,25 +161,26 @@ namespace DeskDefender
             {
                 if (_monitoringService.IsRunning)
                 {
+                    // Stop monitoring
                     await Task.Run(() => _monitoringService.Stop());
-                    StatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                    StatusText.Text = "Monitoring Stopped";
-                    ToggleMonitoringButton.Content = "Start Monitoring";
-                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 174, 96)); // Green for start
                     
-                    // Phase 2: Update tray service with new monitoring status
+                    // Stop background monitoring coordination
+                    _backgroundMonitoringService.StopBackgroundMonitoring();
+                    
+                    // Update UI and tray to reflect stopped state
+                    UpdateUIForMonitoringState(false);
                     _trayService.UpdateMonitoringStatus(false);
                 }
                 else
                 {
+                    // Start monitoring
                     await Task.Run(() => _monitoringService.Start());
-                    _monitoringStartTime = DateTime.Now;
-                    StatusIndicator.Fill = new SolidColorBrush(Colors.LimeGreen);
-                    StatusText.Text = "Monitoring Active";
-                    ToggleMonitoringButton.Content = "Stop Monitoring";
-                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for stop
                     
-                    // Phase 2: Update tray service with new monitoring status
+                    // Start background monitoring coordination
+                    _backgroundMonitoringService.StartBackgroundMonitoring();
+                    
+                    // Update UI and tray to reflect active state
+                    UpdateUIForMonitoringState(true);
                     _trayService.UpdateMonitoringStatus(true);
                 }
             }
@@ -184,6 +188,40 @@ namespace DeskDefender
             {
                 _logger.LogError(ex, "Error toggling monitoring");
                 System.Windows.MessageBox.Show($"Error: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Updates the UI elements to reflect the current monitoring state
+        /// </summary>
+        /// <param name="isMonitoring">Whether monitoring is currently active</param>
+        private void UpdateUIForMonitoringState(bool isMonitoring)
+        {
+            try
+            {
+                if (isMonitoring)
+                {
+                    // Monitoring is active - show stop state
+                    StatusIndicator.Fill = new SolidColorBrush(Colors.LimeGreen);
+                    StatusText.Text = "Monitoring Active";
+                    ToggleMonitoringButton.Content = "Stop Monitoring";
+                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for stop
+                    _monitoringStartTime = DateTime.Now;
+                }
+                else
+                {
+                    // Monitoring is stopped - show start state
+                    StatusIndicator.Fill = new SolidColorBrush(Colors.Red);
+                    StatusText.Text = "Monitoring Stopped";
+                    ToggleMonitoringButton.Content = "Start Monitoring";
+                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 174, 96)); // Green for start
+                }
+                
+                _logger.LogDebug("UI updated for monitoring state: {IsMonitoring}", isMonitoring);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating UI for monitoring state");
             }
         }
 
