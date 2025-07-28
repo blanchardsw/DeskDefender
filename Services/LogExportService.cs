@@ -134,7 +134,7 @@ namespace DeskDefender.Services
             var text = new StringBuilder();
             
             text.AppendLine("DeskDefender Event Log Export");
-            text.AppendLine($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            text.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss} Local Time");
             text.AppendLine($"Total Events: {events.Count()}");
             text.AppendLine(new string('=', 80));
             text.AppendLine();

@@ -128,7 +128,7 @@ namespace DeskDefender.Services
                     _blurredFrame = new Mat();
 
                     _isCapturing = true;
-                    _lastFrameTime = DateTime.UtcNow;
+                    _lastFrameTime = DateTime.Now;
                     
                     _logger.LogInformation("Camera capture started successfully on camera {CameraIndex}", _cameraIndex);
                 }
@@ -534,7 +534,7 @@ namespace DeskDefender.Services
                 {
                     CapturedFrame = frameBitmap,
                     MotionLevel = changePercentage,
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = DateTime.Now
                 };
                 
                 MotionDetected?.Invoke(this, motionArgs);
@@ -570,7 +570,7 @@ namespace DeskDefender.Services
         private void UpdatePerformanceMetrics()
         {
             _frameCount++;
-            var currentTime = DateTime.UtcNow;
+            var currentTime = DateTime.Now;
             var timeDiff = (currentTime - _lastFrameTime).TotalSeconds;
             
             if (timeDiff > 0)

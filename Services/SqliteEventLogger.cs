@@ -236,7 +236,7 @@ namespace DeskDefender.Services
         {
             await Task.Run(() =>
             {
-                var retentionDays = (int)(DateTime.UtcNow - olderThan).TotalDays;
+                var retentionDays = (int)(DateTime.Now - olderThan).TotalDays;
                 CleanupOldEvents(Math.Max(1, retentionDays));
             });
         }
@@ -441,7 +441,7 @@ namespace DeskDefender.Services
         {
             try
             {
-                var fileName = $"events_{DateTime.UtcNow:yyyy-MM-dd}.json";
+                var fileName = $"events_{DateTime.Now:yyyy-MM-dd}.json";
                 var filePath = Path.Combine(_logDirectory, fileName);
                 
                 // Create a simplified version for file logging

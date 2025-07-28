@@ -91,7 +91,7 @@ namespace DeskDefender
             bool isMonitoring = _monitoringService.IsRunning;
             if (isMonitoring)
             {
-                var uptime = DateTime.UtcNow - _monitoringStartTime;
+                var uptime = DateTime.Now - _monitoringStartTime;
                 UptimeText.Text = $"{uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
             }
         }
@@ -106,14 +106,16 @@ namespace DeskDefender
                     StatusIndicator.Fill = new SolidColorBrush(Colors.Red);
                     StatusText.Text = "Monitoring Stopped";
                     ToggleMonitoringButton.Content = "Start Monitoring";
+                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 174, 96)); // Green for start
                 }
                 else
                 {
                     await Task.Run(() => _monitoringService.Start());
-                    _monitoringStartTime = DateTime.UtcNow;
+                    _monitoringStartTime = DateTime.Now;
                     StatusIndicator.Fill = new SolidColorBrush(Colors.LimeGreen);
                     StatusText.Text = "Monitoring Active";
                     ToggleMonitoringButton.Content = "Stop Monitoring";
+                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for stop
                 }
             }
             catch (Exception ex)
@@ -172,12 +174,133 @@ namespace DeskDefender
 
         private async void EventTypeFilter_Changed(object sender, SelectionChangedEventArgs e)
         {
-            if (_isInitialized) await LoadEventLogAsync();
+            if (_isInitialized) ApplyEventFilters();
         }
 
         private async void SeverityFilter_Changed(object sender, SelectionChangedEventArgs e)
         {
-            if (_isInitialized) await LoadEventLogAsync();
+            if (_isInitialized) ApplyEventFilters();
+        }
+
+        private void TimeRangeValue_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isInitialized) ValidateAndApplyTimeFilter();
+        }
+
+        private void TimeRangeUnit_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isInitialized) ValidateAndApplyTimeFilter();
+        }
+
+        private void ValidateAndApplyTimeFilter()
+        {
+            try
+            {
+                if (int.TryParse(TimeRangeValue.Text, out int value))
+                {
+                    var selectedUnit = (TimeRangeUnit.SelectedItem as ComboBoxItem)?.Content?.ToString();
+                    
+                    // Apply range limits
+                    if (selectedUnit == "Hours" && value > 24)
+                    {
+                        TimeRangeValue.Text = "24";
+                        return;
+                    }
+                    else if (selectedUnit == "Days" && value > 7)
+                    {
+                        TimeRangeValue.Text = "7";
+                        return;
+                    }
+                    else if (value < 1)
+                    {
+                        TimeRangeValue.Text = "1";
+                        return;
+                    }
+                }
+                else
+                {
+                    // Invalid input, reset to 1
+                    TimeRangeValue.Text = "1";
+                    return;
+                }
+                
+                ApplyEventFilters();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating time filter");
+            }
+        }
+
+        private void ApplyEventFilters()
+        {
+            if (!_isInitialized || EventTypeFilter == null || SeverityFilter == null || TimeRangeValue == null || TimeRangeUnit == null)
+                return;
+                
+            try
+            {
+                var selectedEventType = (EventTypeFilter.SelectedItem as ComboBoxItem)?.Content?.ToString();
+                var selectedSeverity = (SeverityFilter.SelectedItem as ComboBoxItem)?.Content?.ToString();
+                
+                var filteredEvents = _eventLog.AsEnumerable();
+                
+                // Apply timestamp filter
+                if (int.TryParse(TimeRangeValue.Text, out int timeValue))
+                {
+                    var selectedUnit = (TimeRangeUnit.SelectedItem as ComboBoxItem)?.Content?.ToString();
+                    DateTime cutoffTime;
+                    
+                    if (selectedUnit == "Hours")
+                    {
+                        cutoffTime = DateTime.Now.AddHours(-timeValue);
+                    }
+                    else // Days
+                    {
+                        cutoffTime = DateTime.Now.AddDays(-timeValue);
+                    }
+                    
+                    filteredEvents = filteredEvents.Where(e => e.Timestamp >= cutoffTime);
+                }
+                
+                // Apply event type filter
+                if (selectedEventType != null && selectedEventType != "All Events")
+                {
+                    filteredEvents = filteredEvents.Where(e => 
+                        string.Equals(e.EventType, selectedEventType, StringComparison.OrdinalIgnoreCase));
+                }
+                
+                // Apply severity filter
+                if (selectedSeverity != null && selectedSeverity != "All Levels")
+                {
+                    filteredEvents = filteredEvents.Where(e => 
+                        GetSeverityFromColor(e.SeverityColor) == selectedSeverity);
+                }
+                
+                var resultList = filteredEvents.OrderByDescending(e => e.Timestamp).ToList();
+                EventLogList.ItemsSource = resultList;
+                
+                _logger.LogDebug("Applied filters: EventType={EventType}, Severity={Severity}, TimeRange={TimeValue} {TimeUnit}, Results={Count}", 
+                    selectedEventType, selectedSeverity, TimeRangeValue.Text, (TimeRangeUnit.SelectedItem as ComboBoxItem)?.Content?.ToString(), resultList.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in ApplyEventFilters");
+                EventLogList.ItemsSource = _eventLog;
+            }
+        }
+
+        private string GetSeverityFromColor(SolidColorBrush brush)
+        {
+            if (brush == null) return "Unknown";
+            
+            var color = brush.Color;
+            if (color == Colors.Red) return "Critical";
+            if (color == Colors.Orange) return "High";
+            if (color == Colors.Yellow) return "Medium";
+            if (color == Colors.Green) return "Low";
+            if (color == Colors.Gray) return "Info";
+            
+            return "Unknown";
         }
 
         private async void RefreshLog_Click(object sender, RoutedEventArgs e)

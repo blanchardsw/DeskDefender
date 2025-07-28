@@ -144,7 +144,7 @@ namespace DeskDefender.Services
             {
                 try
                 {
-                    var now = DateTime.UtcNow;
+                    var now = DateTime.Now;
                     var summary = new EventSummary
                     {
                         IntervalStart = _currentBatchStart,

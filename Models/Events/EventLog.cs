@@ -13,9 +13,9 @@ namespace DeskDefender.Models.Events
         public Guid Id { get; set; } = Guid.NewGuid();
 
         /// <summary>
-        /// Timestamp when the event occurred
+        /// Timestamp when the event occurred (in local time)
         /// </summary>
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
 
         /// <summary>
         /// Type of event (Input, Motion, Login, USB, etc.)

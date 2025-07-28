@@ -131,10 +131,13 @@
                         </Grid.RowDefinitions>
                         
                         <TextBlock Grid.Row="0" Text="Recent Events" FontWeight="Bold" 
-                                  Background="#ECF0F1" Padding="10,5"/>
+                                  Background="{DynamicResource SecondaryBackgroundBrush}" 
+                                  Foreground="{DynamicResource PrimaryTextBrush}" Padding="10,5"/>
                         
                         <ListView Grid.Row="1" x:Name="RecentEventsList" 
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 Background="{DynamicResource SecondaryBackgroundBrush}"
+                                 Foreground="{DynamicResource PrimaryTextBrush}">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="5">
@@ -147,12 +150,13 @@
                                         <Ellipse Grid.Column="0" Width="8" Height="8" 
                                                 Fill="{Binding SeverityColor}" Margin="0,0,10,0"/>
                                         <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding EventType}" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding EventType}" FontWeight="Bold" 
+                                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
                                             <TextBlock Text="{Binding Description}" 
-                                                      TextWrapping="Wrap" Foreground="#7F8C8D"/>
+                                                      TextWrapping="Wrap" Foreground="{DynamicResource SecondaryTextBrush}"/>
                                         </StackPanel>
                                         <TextBlock Grid.Column="2" Text="{Binding TimeAgo}" 
-                                                  Foreground="#95A5A6" FontSize="10"/>
+                                                  Foreground="{DynamicResource SecondaryTextBrush}" FontSize="10"/>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -174,7 +178,7 @@
                 </Grid.RowDefinitions>
                 
                 <!-- Statistics Panel -->
-                <Border Grid.Row="0" BorderBrush="#BDC3C7" BorderThickness="1">
+                <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -182,7 +186,8 @@
                         </Grid.RowDefinitions>
                         
                         <TextBlock Grid.Row="0" Text="System Statistics" FontWeight="Bold" 
-                                  Background="#ECF0F1" Padding="10,5"/>
+                                  Background="{DynamicResource SecondaryBackgroundBrush}" 
+                                  Foreground="{DynamicResource PrimaryTextBrush}" Padding="10,5"/>
                         
                         <Grid Grid.Row="1" Margin="10">
                             <Grid.ColumnDefinitions>
@@ -198,26 +203,36 @@
                             </Grid.RowDefinitions>
                             
                             <!-- Statistics Labels and Values -->
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Total Events:" FontWeight="Bold"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TotalEventsText" Text="0"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Total Events:" FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TotalEventsText" Text="0" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
                             
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Today's Events:" FontWeight="Bold"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TodayEventsText" Text="0"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Today's Events:" FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TodayEventsText" Text="0" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
                             
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="High Priority:" FontWeight="Bold"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="HighPriorityText" Text="0" Foreground="Red"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="High Priority:" FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="HighPriorityText" Text="0" 
+                                      Foreground="#E74C3C"/>
                             
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Uptime:" FontWeight="Bold"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="UptimeText" Text="00:00:00"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Uptime:" FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="UptimeText" Text="00:00:00" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
                             
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Last Alert:" FontWeight="Bold"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="LastAlertText" Text="None"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Last Alert:" FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" x:Name="LastAlertText" Text="None" 
+                                      Foreground="{DynamicResource PrimaryTextBrush}"/>
                         </Grid>
                     </Grid>
                 </Border>
                 
                 <!-- Event Log -->
-                <Border Grid.Row="2" BorderBrush="#BDC3C7" BorderThickness="1">
+                <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -227,7 +242,8 @@
                         </Grid.RowDefinitions>
                         
                         <TextBlock Grid.Row="0" Text="Event Log" FontWeight="Bold" 
-                                  Background="#ECF0F1" Padding="10,5"/>
+                                  Background="{DynamicResource SecondaryBackgroundBrush}" 
+                                  Foreground="{DynamicResource PrimaryTextBrush}" Padding="10,5"/>
                         
                         <!-- Severity Legend -->
                         <Border Grid.Row="1" Background="{DynamicResource TertiaryBackgroundBrush}" Padding="10,5" Margin="5">
@@ -294,6 +310,20 @@
                                 <ComboBoxItem Content="Medium"/>
                                 <ComboBoxItem Content="Low"/>
                             </ComboBox>
+                            
+                            <!-- Timestamp Filter -->
+                            <TextBlock Text="Last:" VerticalAlignment="Center" Margin="10,0,5,0" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBox x:Name="TimeRangeValue" Width="40" Text="1" Margin="0,0,5,0" 
+                                    TextAlignment="Center" VerticalAlignment="Center"
+                                    Background="{DynamicResource ControlBackgroundBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"
+                                    TextChanged="TimeRangeValue_TextChanged"/>
+                            <ComboBox x:Name="TimeRangeUnit" Width="60" Margin="0,0,10,0"
+                                     SelectionChanged="TimeRangeUnit_Changed">
+                                <ComboBoxItem Content="Hours"/>
+                                <ComboBoxItem Content="Days" IsSelected="True"/>
+                            </ComboBox>
+                            
                             <Button Content="🔄 Refresh" Click="RefreshLog_Click" Padding="5"/>
                         </StackPanel>
                         
