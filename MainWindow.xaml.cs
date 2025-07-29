@@ -1162,38 +1162,7 @@ namespace DeskDefender
 
         #region Event List Auto-Refresh
         
-        /// <summary>
-        /// Refreshes the event list from the database automatically
-        /// </summary>
-        private async void RefreshEventList(object sender, EventArgs e)
-        {
-            try
-            {
-                // Get recent events from the last 24 hours
-                var startDate = DateTime.Now.AddHours(-24);
-                var endDate = DateTime.Now;
-                
-                var recentEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
-                
-                // Update UI on dispatcher thread
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    // Clear and repopulate recent events
-                    _recentEvents.Clear();
-                    foreach (var eventLog in recentEvents.Take(50).OrderByDescending(e => e.Timestamp))
-                    {
-                        var displayModel = new EventDisplayModel(eventLog);
-                        _recentEvents.Add(displayModel);
-                    }
-                    
-                    _logger.LogDebug("Event list auto-refreshed with {Count} recent events", _recentEvents.Count);
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during event list auto-refresh");
-            }
-        }
+
         
         #endregion
 

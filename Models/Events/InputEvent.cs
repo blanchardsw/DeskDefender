@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace DeskDefender.Models.Events
 {
@@ -47,6 +48,11 @@ namespace DeskDefender.Models.Events
         /// System idle time before this input
         /// </summary>
         public TimeSpan PreviousIdleTime { get; set; }
+
+        /// <summary>
+        /// Additional structured data for activity summaries
+        /// </summary>
+        public Dictionary<string, object>? ActivityData { get; set; }
     }
 
     /// <summary>

@@ -197,7 +197,7 @@ namespace DeskDefender
                     services.AddSingleton<SettingsService>();
                     services.AddSingleton<LogExportService>();
                     services.AddSingleton<DatabaseMaintenanceService>();
-                    services.AddSingleton<IInputMonitor, WindowsInputMonitor>(); // Regular input monitoring
+                    services.AddSingleton<IInputMonitor, WindowsInputMonitor>();
                     services.AddSingleton<ICameraService, OpenCvCameraService>();
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
                     services.AddSingleton<IAlertService, TwilioAlertService>();
@@ -209,6 +209,10 @@ namespace DeskDefender
                     
                     // Phase 3: Login Monitoring Services
                     services.AddSingleton<ILoginMonitor, WindowsLoginMonitor>();
+                    
+                    // Service-based Secure Input Monitoring (Windows Service + IPC)
+                    services.AddSingleton<DeskDefender.Services.IPC.IServiceInputMonitor, DeskDefender.Services.IPC.ServiceInputMonitor>();
+                    services.AddSingleton<DeskDefender.Services.IPC.ServiceBasedSecureInputMonitor>();
                     
                     // Composite monitoring service (must be registered after all dependencies)
                     services.AddSingleton<IMonitorService>(provider => new CompositeMonitoringService(

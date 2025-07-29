@@ -149,6 +149,9 @@ namespace DeskDefender.Data
             modelBuilder.Entity<InputEvent>(entity =>
             {
                 entity.ToTable("InputEvents");
+                
+                // Ignore ActivityData property - it's for in-memory use only
+                entity.Ignore(e => e.ActivityData);
             });
 
             modelBuilder.Entity<CameraEvent>(entity =>

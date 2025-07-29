@@ -36,8 +36,8 @@ namespace DeskDefender.Services
         private readonly ILoginMonitor _loginMonitor;
         private readonly IServiceProvider _serviceProvider;
         
-        // Screen lock monitoring
-        private SecureInputMonitor? _secureInputMonitor;
+        // Screen lock monitoring (service-based)
+        private DeskDefender.Services.IPC.ServiceBasedSecureInputMonitor? _serviceBasedSecureInputMonitor;
         
         // Monitoring state
         private bool _isMonitoring = false;
@@ -69,7 +69,7 @@ namespace DeskDefender.Services
         /// <param name="sessionMonitor">Session monitoring service for lock/unlock events</param>
         /// <param name="backgroundMonitoringService">Background monitoring coordination service</param>
         /// <param name="loginMonitor">Login monitoring service for login attempts</param>
-        /// <param name="serviceProvider">Service provider for creating SecureInputMonitor during lock</param>
+        /// <param name="serviceProvider">Service provider for creating ServiceBasedSecureInputMonitor during lock</param>
         public CompositeMonitoringService(
             IInputMonitor inputMonitor,
             ICameraService cameraService,
@@ -800,16 +800,14 @@ namespace DeskDefender.Services
                     {
                         try
                         {
-                            // Create SecureInputMonitor for lock monitoring (don't stop normal monitor)
-                            var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
-                            var secureLogger = loggerFactory.CreateLogger<SecureInputMonitor>();
-                            _secureInputMonitor = new SecureInputMonitor(secureLogger, _eventLogger);
-                            _secureInputMonitor.Start();
-                            _logger.LogInformation("✅ SecureInputMonitor activated - keystroke logging during lock enabled");
+                            // Create ServiceBasedSecureInputMonitor for lock monitoring via Windows Service
+                            _serviceBasedSecureInputMonitor = _serviceProvider.GetRequiredService<DeskDefender.Services.IPC.ServiceBasedSecureInputMonitor>();
+                            await _serviceBasedSecureInputMonitor.StartAsync();
+                            _logger.LogInformation("✅ ServiceBasedSecureInputMonitor activated - Windows Service lock monitoring enabled");
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "❌ Failed to activate SecureInputMonitor during session lock");
+                            _logger.LogError(ex, "❌ Failed to activate ServiceBasedSecureInputMonitor during session lock");
                         }
                     }
                     
@@ -820,19 +818,19 @@ namespace DeskDefender.Services
                 {
                     _logger.LogInformation("🔓 Session unlocked - deactivating secure input monitoring");
                     
-                    // CRITICAL: Disable secure input monitoring after unlock
-                    if (_secureInputMonitor != null)
+                    // CRITICAL: Disable service-based secure input monitoring after unlock
+                    if (_serviceBasedSecureInputMonitor != null)
                     {
                         try
                         {
-                            _secureInputMonitor.Stop();
-                            _secureInputMonitor.Dispose();
-                            _secureInputMonitor = null;
-                            _logger.LogInformation("✅ SecureInputMonitor deactivated after session unlock");
+                            await _serviceBasedSecureInputMonitor.StopAsync();
+                            _serviceBasedSecureInputMonitor.Dispose();
+                            _serviceBasedSecureInputMonitor = null;
+                            _logger.LogInformation("✅ ServiceBasedSecureInputMonitor deactivated after session unlock");
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "❌ Failed to deactivate SecureInputMonitor after session unlock");
+                            _logger.LogError(ex, "❌ Failed to deactivate ServiceBasedSecureInputMonitor after session unlock");
                         }
                     }
                     
