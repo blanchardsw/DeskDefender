@@ -69,7 +69,7 @@ namespace DeskDefender.Services
         /// <summary>
         /// Event fired when a login attempt is detected
         /// </summary>
-        public event EventHandler<LoginEvent> LoginAttemptDetected;
+        public event EventHandler<LoginEvent>? LoginAttemptDetected;
 
         /// <summary>
         /// Sets which event IDs to monitor (e.g., 4625 for failed logins)
@@ -433,7 +433,7 @@ namespace DeskDefender.Services
         /// Logs login events to the database
         /// </summary>
         /// <param name="loginEvent">Login event to log</param>
-        private void LogLoginEvent(LoginEvent loginEvent)
+        private async void LogLoginEvent(LoginEvent loginEvent)
         {
             try
             {
@@ -449,7 +449,7 @@ namespace DeskDefender.Services
                     FailureReason = loginEvent.FailureReason
                 });
 
-                _eventLogger.LogEventAsync(loginEvent);
+                await _eventLogger.LogEventAsync(loginEvent);
                 
                 _logger.LogDebug("Login event logged: {Success} for {Username}", loginEvent.Success ? "Success" : "Failure", loginEvent.Username);
             }

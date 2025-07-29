@@ -243,9 +243,9 @@ namespace DeskDefender.Services
                     }
 
                     _isMonitoring = true;
-                    _sessionStartTime = DateTime.UtcNow;
-                    _lastInputTime = DateTime.UtcNow;
-                    _lastEventTime = DateTime.UtcNow;
+                    _sessionStartTime = DateTime.Now;
+                    _lastInputTime = DateTime.Now;
+                    _lastEventTime = DateTime.Now;
                     
                     // Start the event batching service
                     _batchingService.Start();
@@ -345,7 +345,7 @@ namespace DeskDefender.Services
                     // Extract key information from the hook data
                     var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
                     var virtualKeyCode = (int)hookStruct.vkCode;
-                    var timestamp = DateTime.UtcNow;
+                    var timestamp = DateTime.Now;
                     
                     // Send individual key event to batching service
                     _batchingService.AddKeyboardEvent(virtualKeyCode, timestamp);
@@ -383,7 +383,7 @@ namespace DeskDefender.Services
                     // Get cursor position using Windows API
                     POINT cursorPos;
                     GetCursorPos(out cursorPos);
-                    var timestamp = DateTime.UtcNow;
+                    var timestamp = DateTime.Now;
                     
                     if (wParam == (IntPtr)WM_LBUTTONDOWN)
                     {
@@ -482,7 +482,7 @@ namespace DeskDefender.Services
         /// </summary>
         private void CheckAndGenerateEvent()
         {
-            var now = DateTime.UtcNow;
+            var now = DateTime.Now;
             var timeSinceLastEvent = now - _lastEventTime;
             
             _logger.LogDebug("CheckAndGenerateEvent: timeSinceLastEvent={TimeSince}, threshold={Threshold}, keystrokes={Keys}, clicks={Clicks}", 
@@ -507,7 +507,7 @@ namespace DeskDefender.Services
         {
             try
             {
-                var duration = DateTime.UtcNow - _sessionStartTime;
+                var duration = DateTime.Now - _sessionStartTime;
                 var idleTime = GetIdleTime();
                 
                 // Calculate typing speed (characters per minute)
@@ -573,7 +573,7 @@ namespace DeskDefender.Services
             _keystrokeCount = 0;
             _mouseClickCount = 0;
             _mouseMovementDistance = 0;
-            _sessionStartTime = DateTime.UtcNow;
+            _sessionStartTime = DateTime.Now;
         }
 
         #endregion

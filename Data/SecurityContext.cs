@@ -236,7 +236,7 @@ namespace DeskDefender.Data
             try
             {
                 var totalEvents = Events.Count();
-                var todayEvents = Events.Count(e => e.Timestamp.Date == DateTime.UtcNow.Date);
+                var todayEvents = Events.Count(e => e.Timestamp.Date == DateTime.Now.Date);
                 var highSeverityEvents = Events.Count(e => e.Severity >= EventSeverity.High);
                 
                 var oldestEvent = Events.OrderBy(e => e.Timestamp).FirstOrDefault()?.Timestamp;

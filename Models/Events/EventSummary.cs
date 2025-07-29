@@ -82,12 +82,15 @@ namespace DeskDefender.Models.Events
                 }
             }
 
+            // Ensure duration is always positive
+            var duration = Math.Abs(IntervalDuration.TotalSeconds);
+            
             if (parts.Count == 0)
             {
-                return $"No significant activity during {IntervalDuration.TotalSeconds:F1}s interval";
+                return $"No significant activity during {duration:F1}s interval";
             }
 
-            return $"[{IntervalDuration.TotalSeconds:F1}s] {string.Join(" | ", parts)}";
+            return $"[{duration:F1}s] {string.Join(" | ", parts)}";
         }
     }
 

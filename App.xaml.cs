@@ -40,7 +40,7 @@ namespace DeskDefender
             // Allocate console for debug output in WPF app
             AllocConsole();
             
-            // Set up global exception handlers
+            // Set up global exception handlers with persistent crash logging
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             
@@ -122,35 +122,6 @@ namespace DeskDefender
                     System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 Shutdown(1);
             }
-        }
-        
-        private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
-        {
-            var ex = e.ExceptionObject as Exception;
-            var errorMessage = $"Unhandled exception: {ex?.Message ?? "Unknown error"}";
-            if (ex?.InnerException != null)
-            {
-                errorMessage += $"\nInner Exception: {ex.InnerException.Message}";
-            }
-            errorMessage += $"\nStack Trace: {ex?.StackTrace ?? "No stack trace available"}";
-            
-            Console.WriteLine($"[FATAL] {errorMessage}");
-            System.Diagnostics.Debug.WriteLine($"[FATAL] {errorMessage}");
-        }
-        
-        private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
-        {
-            var errorMessage = $"Dispatcher unhandled exception: {e.Exception.Message}";
-            if (e.Exception.InnerException != null)
-            {
-                errorMessage += $"\nInner Exception: {e.Exception.InnerException.Message}";
-            }
-            errorMessage += $"\nStack Trace: {e.Exception.StackTrace}";
-            
-            Console.WriteLine($"[FATAL] {errorMessage}");
-            System.Diagnostics.Debug.WriteLine($"[FATAL] {errorMessage}");
-            
-            e.Handled = true; // Prevent app from crashing immediately
         }
 
         /// <summary>
@@ -249,7 +220,8 @@ namespace DeskDefender
                         provider.GetRequiredService<ILogger<CompositeMonitoringService>>(),
                         provider.GetRequiredService<ISessionMonitor>(),
                         provider.GetRequiredService<IBackgroundMonitoringService>(),
-                        provider.GetRequiredService<ILoginMonitor>()
+                        provider.GetRequiredService<ILoginMonitor>(),
+                        provider
                     ));
 
                     // UI
@@ -388,6 +360,48 @@ namespace DeskDefender
                 
                 throw new InvalidOperationException(errorMessage, ex);
             }
+        }
+
+        /// <summary>
+        /// Handles unhandled exceptions from AppDomain
+        /// </summary>
+        private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            var exception = e.ExceptionObject as Exception;
+            var crashLog = $"[CRASH] {DateTime.Now:yyyy-MM-dd HH:mm:ss} - Unhandled Exception:\n" +
+                          $"Message: {exception?.Message ?? "Unknown"}\n" +
+                          $"Stack Trace: {exception?.StackTrace ?? "Not available"}\n\n";
+            WriteCrashLogToFile(crashLog);
+        }
+
+        /// <summary>
+        /// Handles unhandled exceptions from WPF Dispatcher
+        /// </summary>
+        private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        {
+            var crashLog = $"[CRASH] {DateTime.Now:yyyy-MM-dd HH:mm:ss} - Dispatcher Exception:\n" +
+                          $"Message: {e.Exception.Message}\n" +
+                          $"Stack Trace: {e.Exception.StackTrace}\n\n";
+            WriteCrashLogToFile(crashLog);
+            
+            // Mark as handled to prevent app termination for debugging
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// Writes crash logs to persistent file storage
+        /// </summary>
+        private void WriteCrashLogToFile(string crashLog)
+        {
+            try
+            {
+                var crashLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), 
+                                               "DeskDefender", "crash_logs.txt");
+                
+                Directory.CreateDirectory(Path.GetDirectoryName(crashLogPath));
+                File.AppendAllText(crashLogPath, crashLog);
+            }
+            catch { /* Ignore errors in crash logging */ }
         }
     }
 }

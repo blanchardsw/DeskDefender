@@ -47,8 +47,7 @@ namespace DeskDefender.Services
             _eventLogger = eventLogger ?? throw new ArgumentNullException(nameof(eventLogger));
             _trayService = trayService ?? throw new ArgumentNullException(nameof(trayService));
 
-            // Subscribe to session state changes
-            _sessionMonitor.SessionStateChanged += OnSessionStateChanged;
+            // Session state changes are handled by CompositeMonitoringService
             
             _logger.LogInformation("BackgroundMonitoringService initialized");
         }
@@ -454,7 +453,7 @@ namespace DeskDefender.Services
                     
                     if (_sessionMonitor != null)
                     {
-                        _sessionMonitor.SessionStateChanged -= OnSessionStateChanged;
+                        // Session state unsubscription handled by CompositeMonitoringService
                     }
 
                     _disposed = true;

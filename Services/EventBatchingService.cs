@@ -19,7 +19,7 @@ namespace DeskDefender.Services
         private readonly object _lockObject = new object();
         
         // Configuration
-        private TimeSpan _summaryInterval = TimeSpan.FromSeconds(30); // Default 30 seconds
+        private TimeSpan _summaryInterval = TimeSpan.FromSeconds(15); // Default 15 seconds to match user configuration
         
         // Current batch data
         private DateTime _currentBatchStart;
@@ -36,7 +36,7 @@ namespace DeskDefender.Services
         public EventBatchingService(ILogger<EventBatchingService> logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _currentBatchStart = DateTime.UtcNow;
+            _currentBatchStart = DateTime.Now;
             
             // Create timer but don't start it yet
             _summaryTimer = new System.Threading.Timer(GenerateSummary, null, Timeout.Infinite, Timeout.Infinite);
@@ -75,7 +75,7 @@ namespace DeskDefender.Services
         {
             lock (_lockObject)
             {
-                _currentBatchStart = DateTime.UtcNow;
+                _currentBatchStart = DateTime.Now;
                 _summaryTimer.Change(_summaryInterval, _summaryInterval);
                 _logger.LogInformation("EventBatchingService started");
             }

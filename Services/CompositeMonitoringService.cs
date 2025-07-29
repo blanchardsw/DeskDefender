@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using DeskDefender.Interfaces;
 using DeskDefender.Models.Configuration;
 using DeskDefender.Models.Events;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DeskDefender.Services
@@ -33,6 +34,10 @@ namespace DeskDefender.Services
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IBackgroundMonitoringService _backgroundMonitoringService;
         private readonly ILoginMonitor _loginMonitor;
+        private readonly IServiceProvider _serviceProvider;
+        
+        // Screen lock monitoring
+        private SecureInputMonitor? _secureInputMonitor;
         
         // Monitoring state
         private bool _isMonitoring = false;
@@ -64,6 +69,7 @@ namespace DeskDefender.Services
         /// <param name="sessionMonitor">Session monitoring service for lock/unlock events</param>
         /// <param name="backgroundMonitoringService">Background monitoring coordination service</param>
         /// <param name="loginMonitor">Login monitoring service for login attempts</param>
+        /// <param name="serviceProvider">Service provider for creating SecureInputMonitor during lock</param>
         public CompositeMonitoringService(
             IInputMonitor inputMonitor,
             ICameraService cameraService,
@@ -73,7 +79,8 @@ namespace DeskDefender.Services
             ILogger<CompositeMonitoringService> logger,
             ISessionMonitor sessionMonitor,
             IBackgroundMonitoringService backgroundMonitoringService,
-            ILoginMonitor loginMonitor)
+            ILoginMonitor loginMonitor,
+            IServiceProvider serviceProvider)
         {
             _inputMonitor = inputMonitor ?? throw new ArgumentNullException(nameof(inputMonitor));
             _cameraService = cameraService ?? throw new ArgumentNullException(nameof(cameraService));
@@ -84,6 +91,7 @@ namespace DeskDefender.Services
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _backgroundMonitoringService = backgroundMonitoringService ?? throw new ArgumentNullException(nameof(backgroundMonitoringService));
             _loginMonitor = loginMonitor ?? throw new ArgumentNullException(nameof(loginMonitor));
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
             // Setup image storage directory
             _imageStoragePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _settings.ImageStoragePath);
@@ -107,7 +115,7 @@ namespace DeskDefender.Services
         /// <summary>
         /// Event fired when the service status changes
         /// </summary>
-        public event EventHandler<bool> StatusChanged;
+        public event EventHandler<bool>? StatusChanged;
 
         /// <summary>
         /// Starts all monitoring services in a coordinated manner
@@ -398,6 +406,12 @@ namespace DeskDefender.Services
         /// </summary>
         private void SubscribeToEvents()
         {
+            // Subscribe to session state changes for coordinated monitoring
+            _sessionMonitor.SessionStateChanged += OnSessionStateChanged;
+            
+            // Subscribe to login monitoring events
+            _loginMonitor.LoginAttemptDetected += OnLoginAttemptDetected;
+
             // Subscribe to input events
             _inputMonitor.InputDetected += OnInputDetected;
 
@@ -768,9 +782,117 @@ namespace DeskDefender.Services
             }
         }
 
+        /// <summary>
+        /// Handles session state changes to coordinate secure input monitoring during lock
+        /// </summary>
+        private async void OnSessionStateChanged(object sender, SessionStateChangedEventArgs e)
+        {
+            try
+            {
+                _logger.LogInformation("Session state changed to: {State}", e.NewState);
+                
+                if (e.NewState == SessionState.Locked)
+                {
+                    _logger.LogInformation("🔒 Session locked - activating secure input monitoring for keystroke capture during lock");
+                    
+                    // CRITICAL: Enable secure input monitoring during lock
+                    if (_isMonitoring)
+                    {
+                        try
+                        {
+                            // Create SecureInputMonitor for lock monitoring (don't stop normal monitor)
+                            var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+                            var secureLogger = loggerFactory.CreateLogger<SecureInputMonitor>();
+                            _secureInputMonitor = new SecureInputMonitor(secureLogger, _eventLogger);
+                            _secureInputMonitor.Start();
+                            _logger.LogInformation("✅ SecureInputMonitor activated - keystroke logging during lock enabled");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "❌ Failed to activate SecureInputMonitor during session lock");
+                        }
+                    }
+                    
+                    // Log session lock event
+                    await LogSessionEvent("Session locked - secure monitoring active", EventSeverity.Info);
+                }
+                else if (e.NewState == SessionState.Unlocked)
+                {
+                    _logger.LogInformation("🔓 Session unlocked - deactivating secure input monitoring");
+                    
+                    // CRITICAL: Disable secure input monitoring after unlock
+                    if (_secureInputMonitor != null)
+                    {
+                        try
+                        {
+                            _secureInputMonitor.Stop();
+                            _secureInputMonitor.Dispose();
+                            _secureInputMonitor = null;
+                            _logger.LogInformation("✅ SecureInputMonitor deactivated after session unlock");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "❌ Failed to deactivate SecureInputMonitor after session unlock");
+                        }
+                    }
+                    
+                    // Log session unlock event
+                    await LogSessionEvent("Session unlocked - normal monitoring resumed", EventSeverity.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling session state change");
+            }
+        }
+        
+        /// <summary>
+        /// Handles login attempt detection events
+        /// </summary>
+        private async void OnLoginAttemptDetected(object sender, LoginEvent loginEvent)
+        {
+            try
+            {
+                _logger.LogInformation("Login attempt detected: {Success} for user {Username}", 
+                    loginEvent.Success ? "Success" : "Failure", loginEvent.Username);
+                
+                // NOTE: Login events are already logged by WindowsLoginMonitor directly
+                // Removing duplicate logging here to prevent duplicate entries
+                // The WindowsLoginMonitor service handles the actual database logging
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling login attempt detection");
+            }
+        }
+
         #endregion
 
         #region IDisposable Implementation
+
+        /// <summary>
+        /// Logs a session-related event to the database
+        /// </summary>
+        private async Task LogSessionEvent(string message, EventSeverity severity)
+        {
+            try
+            {
+                var eventLog = new EventLog
+                {
+                    Timestamp = DateTime.Now,
+                    EventType = "Session",
+                    Description = message,
+                    Severity = severity
+                };
+                
+                await _eventLogger.LogEventAsync(eventLog);
+                _logger.LogDebug("Session event logged: {Message}", message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to log session event: {Message}", message);
+            }
+        }
 
         /// <summary>
         /// Ensures proper cleanup of all resources

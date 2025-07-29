@@ -43,9 +43,12 @@ namespace DeskDefender
         private readonly ObservableCollection<EventDisplayModel> _recentEvents;
         private readonly ObservableCollection<EventDisplayModel> _eventLog;
         private readonly DispatcherTimer _uiUpdateTimer;
-        private DateTime _monitoringStartTime;
-        private Bitmap _currentCameraFrame;
+        private DateTime? _monitoringStartTime;
+        private readonly object _eventLogLock = new object();
+        private bool _isExiting = false; // Flag to distinguish Exit menu from X button
         private bool _isInitialized = false;
+        private Bitmap? _currentCameraFrame;
+        private DispatcherTimer? _eventRefreshTimer;
 
         public MainWindow(IServiceProvider serviceProvider)
         {
@@ -75,8 +78,21 @@ namespace DeskDefender
             // Subscribe to event summaries for UI display
             _eventDisplayService.SummaryForUI += OnEventSummaryReceived;
             
-            _uiUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _uiUpdateTimer.Tick += (s, e) => UpdateUI();
+            // Initialize UI update timer
+            _uiUpdateTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _uiUpdateTimer.Tick += UpdateUI;
+            _uiUpdateTimer.Start();
+            
+            // Initialize event refresh timer for real-time event list updates
+            _eventRefreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5) // Refresh every 5 seconds
+            };
+            _eventRefreshTimer.Tick += RefreshEventList;
+            _eventRefreshTimer.Start();
             
             InitializeUI();
         }
@@ -112,9 +128,6 @@ namespace DeskDefender
                 _trayService.ExitApplication += OnTrayExitApplication;
                 _trayService.ToggleMonitoring += OnTrayToggleMonitoring;
 
-                // Subscribe to session state changes for UI updates
-                _sessionMonitor.SessionStateChanged += OnSessionStateChanged;
-
                 // Subscribe to background monitoring status changes
                 _backgroundMonitoringService.StatusChanged += OnBackgroundMonitoringStatusChanged;
 
@@ -144,13 +157,13 @@ namespace DeskDefender
             }
         }
 
-        private void UpdateUI()
+        private void UpdateUI(object sender, EventArgs e)
         {
             TimestampText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             bool isMonitoring = _monitoringService.IsRunning;
-            if (isMonitoring)
+            if (isMonitoring && _monitoringStartTime.HasValue)
             {
-                var uptime = DateTime.Now - _monitoringStartTime;
+                var uptime = DateTime.Now - _monitoringStartTime.Value;
                 UptimeText.Text = $"{uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
             }
         }
@@ -450,6 +463,22 @@ namespace DeskDefender
             return "Unknown";
         }
 
+        /// <summary>
+        /// Auto-refresh event handler called by timer to update Event Log without manual refresh
+        /// </summary>
+        private async void RefreshEventList(object? sender, EventArgs e)
+        {
+            try
+            {
+                await LoadEventLogAsync();
+                _logger.LogDebug("Event Log auto-refreshed - {Count} events loaded", _eventLog.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during auto-refresh of Event Log");
+            }
+        }
+
         private async void RefreshLog_Click(object sender, RoutedEventArgs e)
         {
             await LoadEventLogAsync();
@@ -476,7 +505,11 @@ namespace DeskDefender
             }
         }
 
-        private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            _isExiting = true; // Set flag to indicate intentional exit
+            Close();
+        }
         
         private void ViewEventLog_Click(object sender, RoutedEventArgs e)
         {
@@ -498,11 +531,11 @@ namespace DeskDefender
             try
             {
                 await _alertService.SendAlertAsync("Test alert from DeskDefender");
-                System.Windows.MessageBox.Show("Test alert sent!", "Success");
+                _logger.LogInformation("Test alert sent successfully");
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Alert failed: {ex.Message}", "Error");
+                _logger.LogError(ex, "Test alert failed: {Message}", ex.Message);
             }
         }
 
@@ -1099,7 +1132,22 @@ namespace DeskDefender
         {
             try
             {
-                // Cancel the close and minimize to tray instead
+                if (_isExiting)
+                {
+                    // User clicked Exit menu - actually exit the application
+                    _logger.LogInformation("Application exiting via Exit menu");
+                    
+                    // Stop monitoring services before exit
+                    if (_monitoringService.IsRunning)
+                    {
+                        _monitoringService.Stop();
+                    }
+                    
+                    // Allow the application to close
+                    return;
+                }
+                
+                // User clicked X button - minimize to tray instead
                 e.Cancel = true;
                 this.WindowState = WindowState.Minimized;
                 _logger.LogDebug("Window close intercepted - minimizing to tray instead");
@@ -1112,6 +1160,43 @@ namespace DeskDefender
 
         #endregion
 
+        #region Event List Auto-Refresh
+        
+        /// <summary>
+        /// Refreshes the event list from the database automatically
+        /// </summary>
+        private async void RefreshEventList(object sender, EventArgs e)
+        {
+            try
+            {
+                // Get recent events from the last 24 hours
+                var startDate = DateTime.Now.AddHours(-24);
+                var endDate = DateTime.Now;
+                
+                var recentEvents = await _eventLogger.GetEventsAsync(startDate, endDate);
+                
+                // Update UI on dispatcher thread
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    // Clear and repopulate recent events
+                    _recentEvents.Clear();
+                    foreach (var eventLog in recentEvents.Take(50).OrderByDescending(e => e.Timestamp))
+                    {
+                        var displayModel = new EventDisplayModel(eventLog);
+                        _recentEvents.Add(displayModel);
+                    }
+                    
+                    _logger.LogDebug("Event list auto-refreshed with {Count} recent events", _recentEvents.Count);
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during event list auto-refresh");
+            }
+        }
+        
+        #endregion
+
         #region Menu Event Handlers
 
         /// <summary>
@@ -1121,40 +1206,20 @@ namespace DeskDefender
         {
             try
             {
-                var result = System.Windows.MessageBox.Show(
-                    "Are you sure you want to clear all logs from the database? This action cannot be undone.",
-                    "Clear Logs Confirmation",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning);
-
-                if (result == MessageBoxResult.Yes)
+                _logger.LogInformation("User requested to clear all logs from database");
+                
+                // Use the event logger to clear all events directly
+                if (_eventLogger is SqliteEventLogger sqliteLogger)
                 {
-                    _logger.LogInformation("User requested to clear all logs from database");
+                    await sqliteLogger.ClearAllEventsAsync();
+                    _logger.LogInformation("All logs cleared from database successfully");
                     
-                    // Use the event logger to clear all events directly
-                    if (_eventLogger is SqliteEventLogger sqliteLogger)
-                    {
-                        await sqliteLogger.ClearAllEventsAsync();
-                        _logger.LogInformation("All logs cleared from database successfully");
-                        
-                        // Refresh the event log display
-                        await LoadEventLogAsync();
-                        
-                        System.Windows.MessageBox.Show(
-                            "All logs have been cleared from the database.",
-                            "Clear Logs Complete",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Information);
-                    }
-                    else
-                    {
-                        _logger.LogError("Event logger is not SqliteEventLogger, cannot clear logs directly");
-                        System.Windows.MessageBox.Show(
-                            "Error: Cannot clear logs - event logger type not supported.",
-                            "Clear Logs Error",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Error);
-                    }
+                    // Refresh the event log display
+                    await LoadEventLogAsync();
+                }
+                else
+                {
+                    _logger.LogError("Event logger is not SqliteEventLogger, cannot clear logs directly");
                 }
             }
             catch (Exception ex)
