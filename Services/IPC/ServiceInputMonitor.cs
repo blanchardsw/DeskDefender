@@ -30,46 +30,46 @@ public class ServiceInputMonitor : IServiceInputMonitor
 
     public async Task<bool> ConnectAsync()
     {
-        lock (_connectionLock)
+        if (_isConnected || _disposed)
+            return _isConnected;
+
+        try
         {
-            if (_isConnected || _disposed)
-                return _isConnected;
+            _logger.LogInformation("🔌 Connecting to DeskDefender Service via Named Pipe: {PipeName}", _pipeName);
 
-            try
+            _pipeClient = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            
+            // Use proper async/await instead of blocking .Wait()
+            await _pipeClient.ConnectAsync(5000); // 5 second timeout
+
+            if (_pipeClient.IsConnected)
             {
-                _logger.LogInformation("Connecting to DeskDefender Service via Named Pipe: {PipeName}", _pipeName);
-
-                _pipeClient = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                _isConnected = true;
+                LastError = null;
+                _logger.LogInformation("✅ Successfully connected to DeskDefender Service");
                 
-                // Connect with timeout
-                var connectTask = _pipeClient.ConnectAsync(5000); // 5 second timeout
-                connectTask.Wait();
-
-                if (_pipeClient.IsConnected)
-                {
-                    _isConnected = true;
-                    LastError = null;
-                    _logger.LogInformation("Successfully connected to DeskDefender Service");
-                    return true;
-                }
-                else
-                {
-                    LastError = "Failed to connect to service within timeout";
-                    _logger.LogWarning("Failed to connect to DeskDefender Service: {Error}", LastError);
-                    _pipeClient?.Dispose();
-                    _pipeClient = null;
-                    return false;
-                }
+                // Start background listener for push events
+                _ = Task.Run(() => ListenForPushEventsAsync());
+                
+                return true;
             }
-            catch (Exception ex)
+            else
             {
-                LastError = ex.Message;
-                _logger.LogError(ex, "Error connecting to DeskDefender Service");
+                LastError = "Failed to connect to service within timeout";
+                _logger.LogWarning("❌ Failed to connect to DeskDefender Service: {Error}", LastError);
                 _pipeClient?.Dispose();
                 _pipeClient = null;
-                _isConnected = false;
                 return false;
             }
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            _logger.LogError(ex, "❌ Error connecting to DeskDefender Service");
+            _pipeClient?.Dispose();
+            _pipeClient = null;
+            _isConnected = false;
+            return false;
         }
     }
 
@@ -136,13 +136,13 @@ public class ServiceInputMonitor : IServiceInputMonitor
         }
     }
 
-    private async Task<T?> SendRequestAsync<T>(string command, object? parameters = null) where T : class
+    private async Task<T?> SendRequestAsync<T>(string command, Dictionary<string, object>? parameters = null)
     {
         if (!_isConnected || _pipeClient == null)
         {
             LastError = "Not connected to service";
             _logger.LogWarning("Attempted to send request while not connected to service");
-            return null;
+            return default(T);
         }
 
         try
@@ -156,62 +156,247 @@ public class ServiceInputMonitor : IServiceInputMonitor
             };
 
             var requestJson = JsonSerializer.Serialize(request);
-            var requestBytes = Encoding.UTF8.GetBytes(requestJson);
+            _logger.LogDebug("🔄 Sending request to service: {Command}, JSON: {Json}", command, requestJson);
 
-            _logger.LogDebug("Sending request to service: {Command}", command);
+            // Use length-prefixed protocol for reliable messaging
+            await SendMessageAsync(requestJson);
 
-            // Send request
-            await _pipeClient.WriteAsync(requestBytes, 0, requestBytes.Length);
-            await _pipeClient.FlushAsync();
-
-            // Read response
-            var buffer = new byte[4096];
-            var bytesRead = await _pipeClient.ReadAsync(buffer, 0, buffer.Length);
+            // Read response with proper framing
+            var responseJson = await ReadMessageAsync();
             
-            if (bytesRead == 0)
+            if (string.IsNullOrEmpty(responseJson))
             {
                 LastError = "No response from service";
-                return null;
+                _logger.LogWarning("❌ No response received from service for command: {Command}", command);
+                return default(T);
             }
 
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            _logger.LogDebug("📥 Raw response JSON: {Json}", responseJson);
+
             var response = JsonSerializer.Deserialize<PipeResponse>(responseJson);
 
             if (response == null)
             {
                 LastError = "Invalid response format from service";
-                return null;
+                _logger.LogError("❌ Failed to deserialize response JSON: {Json}", responseJson);
+                return default(T);
             }
 
             if (!response.Success)
             {
                 LastError = response.Error;
-                _logger.LogWarning("Service request failed: {Error}", response.Error);
-                return null;
+                _logger.LogWarning("❌ Service request failed: {Error}", response.Error);
+                return default(T);
             }
 
-            _logger.LogDebug("Received successful response from service: {Message}", response.Message);
+            _logger.LogDebug("✅ Received successful response from service: {Message}", response.Message);
 
             if (response.Data == null)
-                return null;
-
-            // Deserialize the data
-            if (typeof(T) == typeof(object))
             {
-                return response.Data as T;
+                _logger.LogDebug("ℹ️ Response data is null for command: {Command}", command);
+                return default(T);
             }
 
-            var dataJson = JsonSerializer.Serialize(response.Data);
-            return JsonSerializer.Deserialize<T>(dataJson);
+            // Improved deserialization to avoid double-serialization issues
+            if (typeof(T) == typeof(object))
+            {
+                return (T?)response.Data;
+            }
+
+            // Handle JsonElement properly
+            if (response.Data is JsonElement dataElement)
+            {
+                var result = dataElement.Deserialize<T>();
+                _logger.LogDebug("✅ Successfully deserialized response data for command: {Command}", command);
+                return result;
+            }
+
+            // Fallback to string-based deserialization
+            var dataJson = response.Data.ToString();
+            if (!string.IsNullOrEmpty(dataJson))
+            {
+                var result = JsonSerializer.Deserialize<T>(dataJson);
+                _logger.LogDebug("✅ Successfully deserialized response data (fallback) for command: {Command}", command);
+                return result;
+            }
+
+            _logger.LogWarning("⚠️ Could not deserialize response data for command: {Command}", command);
+            return default(T);
         }
         catch (Exception ex)
         {
             LastError = ex.Message;
-            _logger.LogError(ex, "Error sending request to service: {Command}", command);
+            _logger.LogError(ex, "❌ Error sending request to service: {Command}", command);
             
             // Connection might be broken, mark as disconnected
             _isConnected = false;
+            return default(T);
+        }
+    }
+
+    /// <summary>
+    /// Sends a message using length-prefixed protocol for reliable Named Pipe communication
+    /// </summary>
+    /// <param name="message">JSON message to send</param>
+    private async Task SendMessageAsync(string message)
+    {
+        var messageBytes = Encoding.UTF8.GetBytes(message);
+        var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
+        
+        // Send length prefix first (4 bytes)
+        await _pipeClient!.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+        
+        // Send message content
+        await _pipeClient.WriteAsync(messageBytes, 0, messageBytes.Length);
+        await _pipeClient.FlushAsync();
+        
+        _logger.LogDebug("💬 Sent message with length {Length}: {Message}", messageBytes.Length, message.Length > 200 ? message[..200] + "..." : message);
+    }
+
+    /// <summary>
+    /// Reads a message using length-prefixed protocol for reliable Named Pipe communication
+    /// </summary>
+    /// <returns>Complete JSON message or null if failed</returns>
+    private async Task<string?> ReadMessageAsync()
+    {
+        try
+        {
+            // Read length prefix (4 bytes)
+            var lengthBuffer = new byte[4];
+            var totalBytesRead = 0;
+            
+            while (totalBytesRead < 4)
+            {
+                var bytesRead = await _pipeClient!.ReadAsync(lengthBuffer, totalBytesRead, 4 - totalBytesRead);
+                if (bytesRead == 0)
+                {
+                    _logger.LogWarning("⚠️ Connection closed while reading length prefix");
+                    return null;
+                }
+                totalBytesRead += bytesRead;
+            }
+            
+            var messageLength = BitConverter.ToInt32(lengthBuffer, 0);
+            _logger.LogDebug("📏 Expecting message of length: {Length}", messageLength);
+            
+            if (messageLength <= 0 || messageLength > 1024 * 1024) // 1MB max
+            {
+                _logger.LogError("❌ Invalid message length: {Length}", messageLength);
+                return null;
+            }
+            
+            // Read message content
+            var messageBuffer = new byte[messageLength];
+            totalBytesRead = 0;
+            
+            while (totalBytesRead < messageLength)
+            {
+                var bytesRead = await _pipeClient.ReadAsync(messageBuffer, totalBytesRead, messageLength - totalBytesRead);
+                if (bytesRead == 0)
+                {
+                    _logger.LogWarning("⚠️ Connection closed while reading message content");
+                    return null;
+                }
+                totalBytesRead += bytesRead;
+            }
+            
+            var message = Encoding.UTF8.GetString(messageBuffer);
+            _logger.LogDebug("📨 Received complete message: {Message}", message.Length > 200 ? message[..200] + "..." : message);
+            
+            return message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error reading message from pipe");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Background listener for push events from the Windows Service
+    /// Continuously reads from the pipe to receive real-time input activity summaries
+    /// </summary>
+    private async Task ListenForPushEventsAsync()
+    {
+        _logger.LogInformation("🔊 Starting background listener for push events from service");
+        
+        try
+        {
+            while (_isConnected && !_disposed && _pipeClient?.IsConnected == true)
+            {
+                try
+                {
+                    // Heartbeat log to verify listener is active
+                    _logger.LogDebug("💓 Background listener heartbeat - waiting for push events");
+                    
+                    // Try to read a push event message
+                    var pushEventJson = await ReadMessageAsync();
+                    
+                    if (!string.IsNullOrEmpty(pushEventJson))
+                    {
+                        _logger.LogDebug("📢 Received push event: {Json}", pushEventJson.Length > 200 ? pushEventJson[..200] + "..." : pushEventJson);
+                        
+                        var response = JsonSerializer.Deserialize<PipeResponse>(pushEventJson);
+                        
+                        if (response?.Success == true && response.Data != null)
+                        {
+                            // Try to deserialize as InputActivitySummary
+                            InputActivitySummary? summary = null;
+                            
+                            if (response.Data is JsonElement dataElement)
+                            {
+                                summary = dataElement.Deserialize<InputActivitySummary>();
+                            }
+                            else
+                            {
+                                var dataJson = response.Data.ToString();
+                                if (!string.IsNullOrEmpty(dataJson))
+                                {
+                                    summary = JsonSerializer.Deserialize<InputActivitySummary>(dataJson);
+                                }
+                            }
+                            
+                            if (summary != null)
+                            {
+                                _logger.LogInformation("✅ Received input activity summary via push: {KeystrokeCount} keystrokes, {MouseMovementCount} movements, {MouseClickCount} clicks", 
+                                    summary.KeystrokeCount, summary.MouseMovementCount, summary.MouseClickCount);
+                                
+                                // Fire event for push-received activity
+                                InputActivityReceived?.Invoke(this, new ServiceInputActivityEventArgs
+                                {
+                                    Summary = summary,
+                                    RetrievedAt = DateTime.Now,
+                                    WasClearedFromService = false // Push events are not cleared
+                                });
+                            }
+                            else
+                            {
+                                _logger.LogWarning("⚠️ Failed to deserialize push event data as InputActivitySummary");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogDebug("ℹ️ Received non-success push event or null data");
+                        }
+                    }
+                    
+                    // Small delay to prevent CPU spinning
+                    await Task.Delay(100);
+                }
+                catch (Exception ex) when (!_disposed)
+                {
+                    _logger.LogWarning(ex, "⚠️ Error in push event listener loop - continuing");
+                    await Task.Delay(1000); // Longer delay on error
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Push event listener terminated with error");
+        }
+        finally
+        {
+            _logger.LogInformation("🔇 Background push event listener stopped");
         }
     }
 

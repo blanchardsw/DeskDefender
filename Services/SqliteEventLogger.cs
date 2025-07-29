@@ -272,17 +272,22 @@ namespace DeskDefender.Services
                     query = query.Where(e => severityList.Contains(e.Severity));
                 }
                 
-                // Execute query asynchronously
-                var events = await query
+                // Execute query asynchronously with MINIMAL duplicate filtering
+                // Group by exact timestamp and description only - take first from each group
+                var events = await query.ToListAsync();
+
+                var groupedEvents = events
+                    .GroupBy(e => new { e.Timestamp, e.Description })
+                    .Select(g => g.OrderBy(e => e.Timestamp).First())
                     .OrderByDescending(e => e.Timestamp)
                     .Skip(pageNumber * pageSize)
                     .Take(pageSize)
-                    .ToListAsync();
+                    .ToList();
                 
                 _logger.LogDebug("Retrieved {Count} events asynchronously from {From} to {To}", 
-                    events.Count, from, to);
+                    groupedEvents.Count, from, to);
                 
-                return events;
+                return groupedEvents;
             }
             catch (Exception ex)
             {
