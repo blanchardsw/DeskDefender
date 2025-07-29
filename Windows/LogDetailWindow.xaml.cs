@@ -35,7 +35,7 @@ namespace DeskDefender.Windows
 
                 // Set severity indicator
                 SeverityIndicator.Fill = _eventModel.SeverityColor;
-                SeverityText.Text = GetSeverityDisplayName(_eventModel.SeverityColor);
+                SeverityText.Text = GetSeverityDisplayName(_eventModel.SeverityColor as SolidColorBrush);
 
                 // Set window title with event type
                 Title = $"Event Details - {_eventModel.EventType}";

@@ -23,7 +23,7 @@ namespace DeskDefender.Utils
                 EventSeverity.Critical => new SolidColorBrush(System.Windows.Media.Colors.Red),
                 EventSeverity.High => new SolidColorBrush(System.Windows.Media.Colors.Orange),
                 EventSeverity.Medium => new SolidColorBrush(System.Windows.Media.Colors.Yellow),
-                EventSeverity.Low => new SolidColorBrush(System.Windows.Media.Colors.LightBlue),
+                EventSeverity.Low => new SolidColorBrush(System.Windows.Media.Colors.Green),
                 EventSeverity.Info => new SolidColorBrush(System.Windows.Media.Colors.LightGray),
                 _ => new SolidColorBrush(System.Windows.Media.Colors.Gray)
             };

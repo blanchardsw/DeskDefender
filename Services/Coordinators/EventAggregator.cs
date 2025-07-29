@@ -201,7 +201,7 @@ namespace DeskDefender.Services.Coordinators
         {
             try
             {
-                await _alertService.SendAlertAsync(eventLog);
+                await _alertService.SendAlertAsync(eventLog.Description, eventLog.ImagePath);
                 eventLog.AlertSent = true;
                 _logger.LogInformation("Alert sent for event: {EventType} - {Description}", 
                     eventLog.EventType, eventLog.Description);

@@ -169,7 +169,11 @@ namespace DeskDefender
                 _trayService.UpdateMonitoringStatus(_monitoringService.IsRunning);
 
                 // Update UI to reflect initial monitoring status (should be stopped)
-                UpdateUIForMonitoringState(_monitoringService.IsRunning);
+                _monitoringController.UpdateUIForMonitoringState(
+                    _monitoringService.IsRunning,
+                    ToggleMonitoringButton,
+                    StatusIndicator,
+                    StatusText);
 
                 // Handle window state changes for minimize to tray
                 this.StateChanged += OnWindowStateChanged;
@@ -189,11 +193,7 @@ namespace DeskDefender
         {
             TimestampText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             bool isMonitoring = _monitoringService.IsRunning;
-            if (isMonitoring && _monitoringStartTime.HasValue)
-            {
-                var uptime = DateTime.Now - _monitoringStartTime.Value;
-                UptimeText.Text = $"{uptime.Hours:D2}:{uptime.Minutes:D2}:{uptime.Seconds:D2}";
-            }
+            UptimeText.Text = _monitoringController.GetUptimeDisplay();
         }
 
         /// <summary>
