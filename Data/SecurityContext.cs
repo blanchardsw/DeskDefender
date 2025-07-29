@@ -173,6 +173,27 @@ namespace DeskDefender.Data
             modelBuilder.Entity<LoginEvent>(entity =>
             {
                 entity.ToTable("LoginEvents");
+                
+                // Configure nullable properties
+                entity.Property(e => e.SourceIpAddress)
+                    .IsRequired(false)
+                    .HasMaxLength(45); // IPv6 max length
+                    
+                entity.Property(e => e.FailureReason)
+                    .IsRequired(false)
+                    .HasMaxLength(500);
+                    
+                entity.Property(e => e.Username)
+                    .IsRequired()
+                    .HasMaxLength(100);
+                    
+                entity.Property(e => e.WorkstationName)
+                    .IsRequired(false)
+                    .HasMaxLength(100);
+                    
+                entity.Property(e => e.LogonType)
+                    .IsRequired(false)
+                    .HasMaxLength(50);
             });
 
             modelBuilder.Entity<UsbEvent>(entity =>

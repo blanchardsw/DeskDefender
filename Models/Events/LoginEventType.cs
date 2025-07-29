@@ -28,6 +28,16 @@ namespace DeskDefender.Models.Events
         /// <summary>
         /// User-initiated logoff event
         /// </summary>
-        UserLogoff = 4
+        UserLogoff = 4,
+
+        /// <summary>
+        /// Workstation was locked
+        /// </summary>
+        WorkstationLock = 5,
+
+        /// <summary>
+        /// Workstation was unlocked (PIN/password)
+        /// </summary>
+        WorkstationUnlock = 6
     }
 }

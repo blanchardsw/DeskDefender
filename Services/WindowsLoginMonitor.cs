@@ -42,16 +42,17 @@ namespace DeskDefender.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _eventLogger = eventLogger ?? throw new ArgumentNullException(nameof(eventLogger));
             
-            // Set comprehensive Event IDs for all login types including PIN
+            // Set comprehensive Event IDs for all login types including workstation lock/unlock
             _monitoredEventIds = new int[]
             {
-                4624, // Successful logon
+                4624, // Successful logon (includes workstation unlock with Logon Type 7)
                 4625, // Failed logon
                 4634, // Logoff
                 4647, // User initiated logoff
                 4648, // Logon using explicit credentials
                 4776, // Domain controller attempted to validate credentials (PIN/Smart Card)
                 4777, // Domain controller failed to validate credentials (PIN/Smart Card)
+                4800, // Workstation was locked
                 5379, // Credential Manager credentials were read (PIN unlock)
                 5380, // Vault credentials were read (PIN unlock)
                 5632, // Wireless LAN 802.1x authentication (can include PIN)
@@ -259,12 +260,22 @@ namespace DeskDefender.Services
         {
             try
             {
+                // For Event ID 4624, we need to check the Logon Type to distinguish between
+                // full login (Type 2) and workstation unlock (Type 7)
                 var loginType = (int)entry.InstanceId switch
                 {
-                    4624 => LoginEventType.Success,
-                    4625 => LoginEventType.Failure,
-                    4634 => LoginEventType.Logoff,
-                    4647 => LoginEventType.UserLogoff,
+                    4624 => DetermineLoginTypeFrom4624(entry.Message), // Check Logon Type for 4624 events
+                    4625 => LoginEventType.Failure,     // Failed logon
+                    4634 => LoginEventType.Logoff,      // Logoff
+                    4647 => LoginEventType.UserLogoff,  // User initiated logoff
+                    4648 => LoginEventType.Success,     // Logon using explicit credentials (PIN)
+                    4776 => LoginEventType.Success,     // Domain controller validated credentials (PIN/Smart Card)
+                    4777 => LoginEventType.Failure,     // Domain controller failed to validate credentials (PIN/Smart Card)
+                    4800 => LoginEventType.WorkstationLock, // Workstation was locked
+                    5379 => LoginEventType.Success,     // Credential Manager credentials were read (PIN unlock)
+                    5380 => LoginEventType.Success,     // Vault credentials were read (PIN unlock)
+                    5632 => LoginEventType.Success,     // Wireless LAN 802.1x authentication
+                    5633 => LoginEventType.Success,     // Wired LAN 802.1x authentication
                     _ => LoginEventType.Unknown
                 };
 
@@ -280,6 +291,7 @@ namespace DeskDefender.Services
                     Username = username,
                     Success = loginType == LoginEventType.Success,
                     EventId = (int)entry.InstanceId,
+                    SourceIpAddress = ExtractSourceIpFromMessage(entry.Message), // Extract IP or null
                     WorkstationName = workstation,
                     LogonType = ExtractLogonTypeFromMessage(entry.Message),
                     FailureReason = loginType == LoginEventType.Failure ? ExtractFailureReasonFromMessage(entry.Message) : null,
@@ -430,6 +442,41 @@ namespace DeskDefender.Services
         }
 
         /// <summary>
+        /// Extracts source IP address from Windows Event Log message
+        /// </summary>
+        /// <param name="message">Event log message</param>
+        /// <returns>Extracted IP address or null if not found</returns>
+        private string? ExtractSourceIpFromMessage(string message)
+        {
+            try
+            {
+                // Look for "Source Network Address:" or "Client Address:" patterns in the message
+                var lines = message.Split('\n', '\r');
+                foreach (var line in lines)
+                {
+                    var trimmedLine = line.Trim();
+                    if (trimmedLine.StartsWith("Source Network Address:", StringComparison.OrdinalIgnoreCase) ||
+                        trimmedLine.StartsWith("Client Address:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parts = trimmedLine.Split(':');
+                        if (parts.Length > 1)
+                        {
+                            var ipAddress = parts[1].Trim();
+                            if (!string.IsNullOrEmpty(ipAddress) && ipAddress != "-" && ipAddress != "::1" && ipAddress != "127.0.0.1")
+                                return ipAddress;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to extract source IP from event message");
+            }
+
+            return null; // Return null for local logins or when IP is not available
+        }
+
+        /// <summary>
         /// Logs login events to the database
         /// </summary>
         /// <param name="loginEvent">Login event to log</param>
@@ -489,6 +536,52 @@ namespace DeskDefender.Services
             {
                 _logger.LogError(ex, "Failed to log login monitoring service event: {Description}", description);
             }
+        }
+
+        /// <summary>
+        /// Determines the specific login type for Event ID 4624 based on Logon Type field
+        /// </summary>
+        /// <param name="message">Event log message</param>
+        /// <returns>Specific LoginEventType based on Logon Type</returns>
+        private LoginEventType DetermineLoginTypeFrom4624(string message)
+        {
+            try
+            {
+                // Parse the Logon Type from the event message
+                // Event ID 4624 message contains "Logon Type:" followed by a number
+                var lines = message.Split('\n', '\r');
+                foreach (var line in lines)
+                {
+                    var trimmedLine = line.Trim();
+                    if (trimmedLine.StartsWith("Logon Type:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parts = trimmedLine.Split(':');
+                        if (parts.Length > 1 && int.TryParse(parts[1].Trim(), out int logonType))
+                        {
+                            return logonType switch
+                            {
+                                2 => LoginEventType.Success,           // Interactive logon (keyboard/screen)
+                                7 => LoginEventType.WorkstationUnlock, // Workstation unlock (PIN/password)
+                                3 => LoginEventType.Success,           // Network logon
+                                4 => LoginEventType.Success,           // Batch logon
+                                5 => LoginEventType.Success,           // Service logon
+                                8 => LoginEventType.Success,           // NetworkCleartext logon
+                                9 => LoginEventType.Success,           // NewCredentials logon
+                                10 => LoginEventType.Success,          // RemoteInteractive logon
+                                11 => LoginEventType.Success,          // CachedInteractive logon
+                                _ => LoginEventType.Success             // Default to Success for unknown types
+                            };
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to parse Logon Type from Event ID 4624 message");
+            }
+
+            // Default to Success if we can't parse the Logon Type
+            return LoginEventType.Success;
         }
 
         #endregion

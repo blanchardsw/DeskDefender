@@ -300,6 +300,7 @@
                                      SelectionChanged="EventTypeFilter_Changed">
                                 <ComboBoxItem Content="All Events" IsSelected="True"/>
                                 <ComboBoxItem Content="Input"/>
+                                <ComboBoxItem Content="Login"/>
                                 <ComboBoxItem Content="Camera"/>
                                 <ComboBoxItem Content="System"/>
                             </ComboBox>
