@@ -52,13 +52,13 @@ namespace DeskDefender.Windows
         /// </summary>
         private string GetSeverityDisplayName(SolidColorBrush severityBrush)
         {
-            if (severityBrush?.Color == Colors.Red)
-                return "Critical/High";
-            else if (severityBrush?.Color == Colors.Yellow)
-                return "Medium/Warning";
-            else if (severityBrush?.Color == Colors.Green)
+            if (severityBrush?.Color == System.Windows.Media.Colors.Red)
+                return "Critical";
+            else if (severityBrush?.Color == System.Windows.Media.Colors.Yellow)
+                return "Medium";
+            else if (severityBrush?.Color == System.Windows.Media.Colors.Green)
                 return "Low";
-            else if (severityBrush?.Color == Colors.Gray)
+            else if (severityBrush?.Color == System.Windows.Media.Colors.Gray)
                 return "Info";
             else
                 return "Unknown";

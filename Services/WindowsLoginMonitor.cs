@@ -298,7 +298,7 @@ namespace DeskDefender.Services
                     Timestamp = entry.TimeGenerated,
                     Description = $"{loginType} login attempt for user: {username}",
                     Details = entry.Message,
-                    Severity = loginType == LoginEventType.Failure ? EventSeverity.High : EventSeverity.Info
+                    Severity = loginType == LoginEventType.Failure ? EventSeverity.Critical : EventSeverity.Medium
                 };
             }
             catch (Exception ex)

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -11,10 +10,12 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using DeskDefender.Controllers;
 using DeskDefender.Interfaces;
 using DeskDefender.Models.Configuration;
 using DeskDefender.Models.Events;
 using DeskDefender.Services;
+using DeskDefender.Utils;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -43,12 +44,15 @@ namespace DeskDefender
         private readonly ObservableCollection<EventDisplayModel> _recentEvents;
         private readonly ObservableCollection<EventDisplayModel> _eventLog;
         private readonly DispatcherTimer _uiUpdateTimer;
-        private DateTime? _monitoringStartTime;
-        private readonly object _eventLogLock = new object();
         private bool _isExiting = false; // Flag to distinguish Exit menu from X button
         private bool _isInitialized = false;
         private Bitmap? _currentCameraFrame;
         private DispatcherTimer? _eventRefreshTimer;
+        
+        // Refactored: Controllers for better separation of concerns
+        private readonly EventDisplayController _eventDisplayController;
+        private readonly MonitoringController _monitoringController;
+        private readonly SessionController _sessionController;
 
         public MainWindow(IServiceProvider serviceProvider)
         {
@@ -74,6 +78,27 @@ namespace DeskDefender
             
             RecentEventsList.ItemsSource = _recentEvents;
             EventLogList.ItemsSource = _eventLog;
+            
+            // Initialize controllers for better separation of concerns
+            _eventDisplayController = new EventDisplayController(
+                _serviceProvider.GetRequiredService<ILogger<EventDisplayController>>(),
+                _eventLogger,
+                _recentEvents,
+                _eventLog,
+                Dispatcher);
+                
+            _monitoringController = new MonitoringController(
+                _serviceProvider.GetRequiredService<ILogger<MonitoringController>>(),
+                _monitoringService,
+                _backgroundMonitoringService,
+                _trayService,
+                Dispatcher);
+                
+            _sessionController = new SessionController(
+                _serviceProvider.GetRequiredService<ILogger<SessionController>>(),
+                _sessionMonitor,
+                _trayService,
+                Dispatcher);
             
             // Subscribe to event summaries for UI display
             _eventDisplayService.SummaryForUI += OnEventSummaryReceived;
@@ -103,13 +128,16 @@ namespace DeskDefender
             MotionSensitivitySlider.Value = _settings.MotionSensitivity;
             SensitivityValue.Text = _settings.MotionSensitivity.ToString("F1");
             _uiUpdateTimer.Start();
-            _ = LoadEventLogAsync();
+            
+            // Use EventDisplayController to load events
+            _ = _eventDisplayController.LoadEventLogAsync();
             
             // Event subscription is now handled by EventCoordinatorService
             // which was started during application initialization
             
-            // Phase 2: Initialize session monitoring and tray services
+            // Phase 2: Initialize session monitoring and tray services using controllers
             InitializePhase2Services();
+            _sessionController.Initialize();
             
             _isInitialized = true;
         }
@@ -152,8 +180,8 @@ namespace DeskDefender
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error initializing Phase 2 services");
-                System.Windows.MessageBox.Show($"Error initializing background monitoring: {ex.Message}", "Initialization Error", 
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                // Log error silently for stealth operation - no MessageBox
+                _logger.LogError(ex, "Error initializing background monitoring - continuing silently");
             }
         }
 
@@ -168,122 +196,18 @@ namespace DeskDefender
             }
         }
 
+        /// <summary>
+        /// Handles monitoring toggle using the MonitoringController - refactored for better separation of concerns
+        /// </summary>
         private async void ToggleMonitoring_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                _logger.LogInformation("=== TOGGLE MONITORING CLICKED ===");
-                _logger.LogInformation("Current monitoring state: {IsRunning}", _monitoringService.IsRunning);
-                
-                if (_monitoringService.IsRunning)
-                {
-                    // Stop monitoring
-                    await Task.Run(() => _monitoringService.Stop());
-                    
-                    // Stop background monitoring coordination
-                    _backgroundMonitoringService.StopBackgroundMonitoring();
-                    
-                    // Update UI and tray to reflect stopped state
-                    UpdateUIForMonitoringState(false);
-                    _trayService.UpdateMonitoringStatus(false);
-                }
-                else
-                {
-                    // Update UI immediately to show starting state
-                    ToggleMonitoringButton.Content = "Starting...";
-                    ToggleMonitoringButton.IsEnabled = false;
-                    
-                    // Start monitoring in background without blocking UI
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            _logger.LogInformation("=== STARTING MONITORING SERVICES ===");
-                            
-                            // Create a simple test event first to verify logging works
-                            _logger.LogInformation("Creating test event to verify logging...");
-                            var testEvent = new EventLog
-                            {
-                                Id = Guid.NewGuid(),
-                                Timestamp = DateTime.Now,
-                                EventType = "System",
-                                Description = "Monitoring startup test - " + DateTime.Now.ToString("HH:mm:ss"),
-                                Severity = EventSeverity.Info,
-                                Source = "MainWindow"
-                            };
-                            
-                            await _eventLogger.LogAsync(testEvent);
-                            _logger.LogInformation("✅ Test event logged successfully");
-                            
-                            // Now try to start monitoring
-                            _logger.LogInformation("Starting CompositeMonitoringService...");
-                            _monitoringService.Start();
-                            _logger.LogInformation("✅ CompositeMonitoringService.IsRunning: {IsRunning}", _monitoringService.IsRunning);
-                            
-                            // Update UI on main thread
-                            await Dispatcher.InvokeAsync(() =>
-                            {
-                                UpdateUIForMonitoringState(true);
-                                _trayService.UpdateMonitoringStatus(true);
-                                ToggleMonitoringButton.IsEnabled = true;
-                                _logger.LogInformation("✅ All services started, UI updated");
-                            });
-                        }
-                        catch (Exception startEx)
-                        {
-                            _logger.LogError(startEx, "❌ MONITORING STARTUP FAILED: {Message}", startEx.Message);
-                            
-                            // Update UI on main thread to show error
-                            await Dispatcher.InvokeAsync(() =>
-                            {
-                                ToggleMonitoringButton.Content = "Start Monitoring";
-                                ToggleMonitoringButton.IsEnabled = true;
-                                System.Windows.MessageBox.Show($"❌ MONITORING FAILED:\n\n{startEx.Message}\n\nCheck console for details.", "Monitoring Failed", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                            });
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error toggling monitoring");
-                System.Windows.MessageBox.Show($"Error: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-            }
+            await _monitoringController.ToggleMonitoringAsync(
+                ToggleMonitoringButton,
+                StatusIndicator,
+                StatusText);
         }
 
-        /// <summary>
-        /// Updates the UI elements to reflect the current monitoring state
-        /// </summary>
-        /// <param name="isMonitoring">Whether monitoring is currently active</param>
-        private void UpdateUIForMonitoringState(bool isMonitoring)
-        {
-            try
-            {
-                if (isMonitoring)
-                {
-                    // Monitoring is active - show stop state
-                    StatusIndicator.Fill = new SolidColorBrush(Colors.LimeGreen);
-                    StatusText.Text = "Monitoring Active";
-                    ToggleMonitoringButton.Content = "Stop Monitoring";
-                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for stop
-                    _monitoringStartTime = DateTime.Now;
-                }
-                else
-                {
-                    // Monitoring is stopped - show start state
-                    StatusIndicator.Fill = new SolidColorBrush(Colors.Red);
-                    StatusText.Text = "Monitoring Stopped";
-                    ToggleMonitoringButton.Content = "Start Monitoring";
-                    ToggleMonitoringButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 174, 96)); // Green for start
-                }
-                
-                _logger.LogDebug("UI updated for monitoring state: {IsMonitoring}", isMonitoring);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating UI for monitoring state");
-            }
-        }
+
 
         private async void CaptureFrame_Click(object sender, RoutedEventArgs e)
         {
@@ -392,6 +316,9 @@ namespace DeskDefender
             }
         }
 
+        /// <summary>
+        /// Applies event filters using the EventDisplayController - refactored for better separation of concerns
+        /// </summary>
         private void ApplyEventFilters()
         {
             if (!_isInitialized || EventTypeFilter == null || SeverityFilter == null || TimeRangeValue == null || TimeRangeUnit == null)
@@ -399,48 +326,20 @@ namespace DeskDefender
                 
             try
             {
-                var selectedEventType = (EventTypeFilter.SelectedItem as ComboBoxItem)?.Content?.ToString();
-                var selectedSeverity = (SeverityFilter.SelectedItem as ComboBoxItem)?.Content?.ToString();
+                var selectedEventType = UIHelper.GetComboBoxItemContent(EventTypeFilter.SelectedItem);
+                var selectedSeverity = UIHelper.GetComboBoxItemContent(SeverityFilter.SelectedItem);
                 
-                var filteredEvents = _eventLog.AsEnumerable();
-                
-                // Apply timestamp filter
                 if (int.TryParse(TimeRangeValue.Text, out int timeValue))
                 {
-                    var selectedUnit = (TimeRangeUnit.SelectedItem as ComboBoxItem)?.Content?.ToString();
-                    DateTime cutoffTime;
+                    var timeUnit = UIHelper.GetComboBoxItemContent(TimeRangeUnit.SelectedItem) ?? "Hours";
                     
-                    if (selectedUnit == "Hours")
-                    {
-                        cutoffTime = DateTime.Now.AddHours(-timeValue);
-                    }
-                    else // Days
-                    {
-                        cutoffTime = DateTime.Now.AddDays(-timeValue);
-                    }
-                    
-                    filteredEvents = filteredEvents.Where(e => e.Timestamp >= cutoffTime);
+                    _eventDisplayController.ApplyEventFilters(
+                        selectedEventType,
+                        selectedSeverity,
+                        timeValue,
+                        timeUnit,
+                        EventLogList);
                 }
-                
-                // Apply event type filter
-                if (selectedEventType != null && selectedEventType != "All Events")
-                {
-                    filteredEvents = filteredEvents.Where(e => 
-                        string.Equals(e.EventType, selectedEventType, StringComparison.OrdinalIgnoreCase));
-                }
-                
-                // Apply severity filter
-                if (selectedSeverity != null && selectedSeverity != "All Levels")
-                {
-                    filteredEvents = filteredEvents.Where(e => 
-                        GetSeverityFromColor(e.SeverityColor) == selectedSeverity);
-                }
-                
-                var resultList = filteredEvents.OrderByDescending(e => e.Timestamp).ToList();
-                EventLogList.ItemsSource = resultList;
-                
-                _logger.LogDebug("Applied filters: EventType={EventType}, Severity={Severity}, TimeRange={TimeValue} {TimeUnit}, Results={Count}", 
-                    selectedEventType, selectedSeverity, TimeRangeValue.Text, (TimeRangeUnit.SelectedItem as ComboBoxItem)?.Content?.ToString(), resultList.Count);
             }
             catch (Exception ex)
             {
@@ -454,11 +353,11 @@ namespace DeskDefender
             if (brush == null) return "Unknown";
             
             var color = brush.Color;
-            if (color == Colors.Red) return "Critical";
-            if (color == Colors.Orange) return "High";
-            if (color == Colors.Yellow) return "Medium";
-            if (color == Colors.Green) return "Low";
-            if (color == Colors.Gray) return "Info";
+            if (color == System.Windows.Media.Colors.Red) return "Critical";
+            if (color == System.Windows.Media.Colors.Orange) return "High";
+            if (color == System.Windows.Media.Colors.Yellow) return "Medium";
+            if (color == System.Windows.Media.Colors.Green) return "Low";
+            if (color == System.Windows.Media.Colors.Gray) return "Info";
             
             return "Unknown";
         }
@@ -605,32 +504,12 @@ namespace DeskDefender
         }
 
 
+        /// <summary>
+        /// Handles incoming events using the EventDisplayController - refactored for better separation of concerns
+        /// </summary>
         private void OnEventReceived(object sender, EventLog eventLog)
         {
-            try
-            {
-                // Update UI on the UI thread
-                Dispatcher.BeginInvoke(() =>
-                {
-                    var displayModel = new EventDisplayModel(eventLog);
-                    
-                    // Add to recent events (limit to 10 most recent)
-                    _recentEvents.Insert(0, displayModel);
-                    while (_recentEvents.Count > 10)
-                    {
-                        _recentEvents.RemoveAt(_recentEvents.Count - 1);
-                    }
-                    
-                    // Add to full event log
-                    _eventLog.Insert(0, displayModel);
-                    
-                    _logger.LogInformation("Event added to UI: {EventType} - {Description}", eventLog.EventType, eventLog.Description);
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error handling received event");
-            }
+            _eventDisplayController.HandleEventReceived(eventLog);
         }
 
         protected override void OnClosing(CancelEventArgs e)
@@ -1147,10 +1026,17 @@ namespace DeskDefender
                     return;
                 }
                 
-                // User clicked X button - minimize to tray instead
-                e.Cancel = true;
-                this.WindowState = WindowState.Minimized;
-                _logger.LogDebug("Window close intercepted - minimizing to tray instead");
+                // User clicked X button - exit the application for stealth operation
+                _logger.LogInformation("Application exiting via X button");
+                
+                // Stop monitoring services before exit
+                if (_monitoringService.IsRunning)
+                {
+                    _monitoringService.Stop();
+                }
+                
+                // Allow the application to close
+                return;
             }
             catch (Exception ex)
             {
@@ -1206,14 +1092,26 @@ namespace DeskDefender
 
     }
 
-    public class EventDisplayModel
+    public class EventDisplayModel : INotifyPropertyChanged
     {
         public string EventType { get; set; }
         public string Description { get; set; }
         public DateTime Timestamp { get; set; }
-        public string TimeAgo => GetTimeAgo();
-        public SolidColorBrush SeverityColor { get; set; }
         public bool AlertSent { get; set; }
+        public System.Windows.Media.Brush SeverityColor { get; set; }
+        
+        private string _timeAgo;
+        public string TimeAgo
+        {
+            get => _timeAgo;
+            set
+            {
+                _timeAgo = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TimeAgo)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         public EventDisplayModel(EventLog eventLog)
         {
@@ -1221,31 +1119,13 @@ namespace DeskDefender
             Description = eventLog.Description ?? "No description";
             Timestamp = eventLog.Timestamp;
             AlertSent = eventLog.AlertSent;
-            SeverityColor = GetSeverityBrush(eventLog.Severity);
+            SeverityColor = Utils.UIHelper.GetSeverityBrush(eventLog.Severity);
+            _timeAgo = Utils.UIHelper.GetTimeAgo(Timestamp);
         }
 
-        private string GetTimeAgo()
+        public void UpdateTimeAgo()
         {
-            var span = DateTime.Now - Timestamp;
-            if (span.TotalMinutes < 1) return "Just now";
-            if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m ago";
-            if (span.TotalDays < 1) return $"{(int)span.TotalHours}h ago";
-            return $"{(int)span.TotalDays}d ago";
+            TimeAgo = Utils.UIHelper.GetTimeAgo(Timestamp);
         }
-
-        private SolidColorBrush GetSeverityBrush(EventSeverity severity)
-        {
-            return severity switch
-            {
-                EventSeverity.Critical => new SolidColorBrush(Colors.Red),        // Red for critical
-                EventSeverity.High => new SolidColorBrush(Colors.Red),             // Red for high
-                EventSeverity.Medium or EventSeverity.Warning => new SolidColorBrush(Colors.Yellow), // Yellow for medium/warning
-                EventSeverity.Low => new SolidColorBrush(Colors.Green),            // Green for low
-                EventSeverity.Info => new SolidColorBrush(Colors.Gray),            // Gray for info
-                _ => new SolidColorBrush(Colors.Gray)                              // Gray for unknown
-            };
-        }
-
-        public void UpdateTimeAgo() { /* Trigger property change if needed */ }
     }
 }
