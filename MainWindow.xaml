@@ -41,6 +41,8 @@
             </Menu.Resources>
             <MenuItem Header="_File" Foreground="{DynamicResource PrimaryTextBrush}">
                 <MenuItem Header="_Settings" Click="Settings_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
+                <MenuItem Header="📱 _Alert Settings" Click="AlertSettings_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
+                <Separator/>
                 <MenuItem Header="_Export Logs" Click="ExportLogs_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
                 <MenuItem Header="_Clear Logs" Click="ClearLogs_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>
                 <MenuItem Header="_Test Database" Click="TestDatabase_Click" Foreground="{DynamicResource PrimaryTextBrush}" Background="{DynamicResource SecondaryBackgroundBrush}"/>

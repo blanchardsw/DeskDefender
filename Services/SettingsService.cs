@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
+using DeskDefender.Interfaces;
+using DeskDefender.Models.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace DeskDefender.Services
@@ -8,11 +11,15 @@ namespace DeskDefender.Services
     /// <summary>
     /// Service for persisting user settings between sessions
     /// </summary>
-    public class SettingsService
+    public class SettingsService : ISettingsService
     {
         private readonly ILogger<SettingsService> _logger;
         private readonly string _settingsFilePath;
+        private readonly string _alertSettingsFilePath;
         private UserSettings _currentSettings;
+        private AlertSettings _currentAlertSettings;
+
+        public event EventHandler? SettingsChanged;
 
         public SettingsService(ILogger<SettingsService> logger)
         {
@@ -23,8 +30,10 @@ namespace DeskDefender.Services
             var appFolder = Path.Combine(appDataPath, "DeskDefender");
             Directory.CreateDirectory(appFolder);
             _settingsFilePath = Path.Combine(appFolder, "settings.json");
+            _alertSettingsFilePath = Path.Combine(appFolder, "alert_settings.json");
             
             _currentSettings = new UserSettings();
+            _currentAlertSettings = new AlertSettings();
         }
 
         /// <summary>
@@ -126,8 +135,11 @@ namespace DeskDefender.Services
             try
             {
                 _currentSettings = new UserSettings();
+                _currentAlertSettings = new AlertSettings();
                 SaveSettings();
+                SaveAlertSettingsAsync(_currentAlertSettings).Wait();
                 _logger.LogInformation("Settings reset to defaults");
+                SettingsChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
@@ -135,6 +147,97 @@ namespace DeskDefender.Services
                 throw;
             }
         }
+
+        /// <summary>
+        /// Gets alert settings for SMS and email notifications
+        /// </summary>
+        public async Task<AlertSettings> GetAlertSettingsAsync()
+        {
+            try
+            {
+                await LoadAlertSettingsAsync();
+                return _currentAlertSettings;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get alert settings");
+                return new AlertSettings();
+            }
+        }
+
+        /// <summary>
+        /// Saves alert settings for SMS and email notifications
+        /// </summary>
+        public async Task SaveAlertSettingsAsync(AlertSettings alertSettings)
+        {
+            try
+            {
+                _currentAlertSettings = alertSettings ?? throw new ArgumentNullException(nameof(alertSettings));
+                
+                var json = JsonSerializer.Serialize(_currentAlertSettings, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                
+                await File.WriteAllTextAsync(_alertSettingsFilePath, json);
+                _logger.LogInformation("Alert settings saved successfully");
+                SettingsChanged?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save alert settings");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Load alert settings from file
+        /// </summary>
+        private async Task LoadAlertSettingsAsync()
+        {
+            try
+            {
+                if (!File.Exists(_alertSettingsFilePath))
+                {
+                    _logger.LogDebug("Alert settings file not found, using defaults");
+                    _currentAlertSettings = new AlertSettings();
+                    return;
+                }
+
+                var json = await File.ReadAllTextAsync(_alertSettingsFilePath);
+                var settings = JsonSerializer.Deserialize<AlertSettings>(json);
+                _currentAlertSettings = settings ?? new AlertSettings();
+                
+                _logger.LogDebug("Alert settings loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load alert settings, using defaults");
+                _currentAlertSettings = new AlertSettings();
+            }
+        }
+
+        /// <summary>
+        /// Gets the current user settings
+        /// </summary>
+        public UserSettings GetSettings()
+        {
+            return _currentSettings;
+        }
+
+        /// <summary>
+        /// Saves user settings
+        /// </summary>
+        public void SaveSettings(UserSettings settings)
+        {
+            _currentSettings = settings ?? throw new ArgumentNullException(nameof(settings));
+            SaveSettings();
+        }
+
+        /// <summary>
+        /// Gets the monitoring interval in seconds
+        /// </summary>
+        public int BatchingIntervalSeconds => _currentSettings.BatchingIntervalSeconds;
     }
 
     /// <summary>

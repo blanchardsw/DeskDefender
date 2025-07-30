@@ -96,6 +96,30 @@ namespace DeskDefender
                 });
                 Console.WriteLine("[DEBUG] Database maintenance service initialized.");
 
+                // Initialize alert service for SMS/email notifications
+                Console.WriteLine("[DEBUG] Initializing alert service...");
+                var alertService = _serviceProvider.GetRequiredService<IAlertService>();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (alertService.IsConfigured())
+                        {
+                            await alertService.StartAsync();
+                            Console.WriteLine("[DEBUG] Alert service started successfully.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("[DEBUG] Alert service not configured, skipping startup.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] Alert service startup failed: {ex.Message}");
+                    }
+                });
+                Console.WriteLine("[DEBUG] Alert service initialized.");
+
                 // Create and show main window
                 Console.WriteLine("[DEBUG] Creating main window...");
                 var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
@@ -140,6 +164,20 @@ namespace DeskDefender
                 if (monitoringService?.IsRunning == true)
                 {
                     monitoringService.Stop();
+                }
+
+                // Stop alert service
+                var alertService = _serviceProvider?.GetService<IAlertService>();
+                if (alertService != null)
+                {
+                    try
+                    {
+                        alertService.StopAsync().Wait(TimeSpan.FromSeconds(5));
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error stopping alert service: {ex.Message}");
+                    }
                 }
 
                 // Dispose of the host
@@ -203,7 +241,12 @@ namespace DeskDefender
                     services.AddSingleton<IInputMonitor, WindowsInputMonitor>();
                     services.AddSingleton<ICameraService, OpenCvCameraService>();
                     services.AddSingleton<IEventLogger, SqliteEventLogger>();
-                    services.AddSingleton<IAlertService, TwilioAlertService>();
+                    
+                    // Phase 4: SMS and Email Alert Services
+                    services.AddSingleton<ISettingsService, SettingsService>();
+                    services.AddSingleton<ISmsService, TwilioSmsService>();
+                    services.AddSingleton<IEmailService, SmtpEmailService>();
+                    services.AddSingleton<IAlertService, AlertService>();
                     
                     // Phase 2: Session Lock Detection & Background Monitoring Services
                     services.AddSingleton<ISessionMonitor, WindowsSessionMonitor>();

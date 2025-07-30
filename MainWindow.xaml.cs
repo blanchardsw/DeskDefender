@@ -1062,6 +1062,39 @@ namespace DeskDefender
         #region Menu Event Handlers
 
         /// <summary>
+        /// Handles the Alert Settings menu click event
+        /// </summary>
+        private void AlertSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _logger.LogInformation("Opening Alert Settings window");
+                
+                var alertSettingsWindow = new Windows.AlertSettingsWindow(
+                    _serviceProvider.GetRequiredService<ISettingsService>(),
+                    _alertService,
+                    _serviceProvider.GetRequiredService<ILogger<Windows.AlertSettingsWindow>>());
+                
+                alertSettingsWindow.Owner = this;
+                var result = alertSettingsWindow.ShowDialog();
+                
+                if (result == true)
+                {
+                    _logger.LogInformation("Alert settings saved successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error opening Alert Settings window");
+                System.Windows.MessageBox.Show(
+                    $"Error opening Alert Settings: {ex.Message}",
+                    "Alert Settings Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
         /// Handles the Clear Logs menu click event
         /// </summary>
         private async void ClearLogs_Click(object sender, RoutedEventArgs e)
