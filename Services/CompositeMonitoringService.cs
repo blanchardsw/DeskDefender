@@ -39,6 +39,9 @@ namespace DeskDefender.Services
         // Screen lock monitoring (service-based)
         private DeskDefender.Services.IPC.ServiceBasedSecureInputMonitor? _serviceBasedSecureInputMonitor;
         
+        // Phase 3: Stealth capture service
+        private StealthCaptureService? _stealthCaptureService;
+        
         // Monitoring state
         private bool _isMonitoring = false;
         private bool _disposed = false;
@@ -241,6 +244,23 @@ namespace DeskDefender.Services
                         }));
                     }
 
+                    // Start Phase 3: Stealth capture service (screen capture and webcam)
+                    startupTasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            _stealthCaptureService = _serviceProvider.GetRequiredService<StealthCaptureService>();
+                            await _stealthCaptureService.StartAsync();
+                            _logger.LogInformation("Stealth capture service started successfully");
+                            lock (serviceStartResults) { serviceStartResults.Add("Stealth capture: Started"); }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to start stealth capture service, but continuing with other services");
+                            lock (serviceStartResults) { serviceStartResults.Add("Stealth capture: Failed"); }
+                        }
+                    }));
+
                     // Start all services asynchronously without blocking
                     // Services will start in parallel and report their status independently
                     _ = Task.Run(async () =>
@@ -344,6 +364,16 @@ namespace DeskDefender.Services
                         {
                             _loginMonitor.Stop();
                             _logger.LogInformation("Login monitoring stopped");
+                        }));
+                    }
+
+                    // Stop Phase 3: Stealth capture service
+                    if (_stealthCaptureService != null)
+                    {
+                        stopTasks.Add(Task.Run(() =>
+                        {
+                            _stealthCaptureService.Stop();
+                            _logger.LogInformation("Stealth capture service stopped");
                         }));
                     }
 

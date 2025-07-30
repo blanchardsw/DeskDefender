@@ -28,6 +28,11 @@
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241020" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241020" />
     
+    <!-- Webcam Capture -->
+    <PackageReference Include="AForge" Version="2.2.5" />
+    <PackageReference Include="AForge.Video" Version="2.2.5" />
+    <PackageReference Include="AForge.Video.DirectShow" Version="2.2.5" />
+    
     <!-- Communication -->
     <PackageReference Include="Twilio" Version="6.16.1" />
     <PackageReference Include="MailKit" Version="4.3.0" />

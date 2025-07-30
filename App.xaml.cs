@@ -210,6 +210,11 @@ namespace DeskDefender
                     // Phase 3: Login Monitoring Services
                     services.AddSingleton<ILoginMonitor, WindowsLoginMonitor>();
                     
+                    // Phase 3: Stealth Capture Services
+                    services.AddSingleton<IScreenCaptureService, ScreenCaptureService>();
+                    services.AddSingleton<IWebcamCaptureService, WebcamCaptureService>();
+                    services.AddSingleton<StealthCaptureService>();
+                    
                     // Service-based Secure Input Monitoring (Windows Service + IPC)
                     services.AddSingleton<DeskDefender.Services.IPC.IServiceInputMonitor, DeskDefender.Services.IPC.ServiceInputMonitor>();
                     services.AddSingleton<DeskDefender.Services.IPC.ServiceBasedSecureInputMonitor>();
