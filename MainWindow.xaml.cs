@@ -260,6 +260,11 @@ namespace DeskDefender
         {
             if (_isInitialized) ApplyEventFilters();
         }
+        
+        private void ShowSystemEventsToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isInitialized) ApplyEventFilters();
+        }
 
         private async void SeverityFilter_Changed(object sender, SelectionChangedEventArgs e)
         {
@@ -321,13 +326,14 @@ namespace DeskDefender
         /// </summary>
         private void ApplyEventFilters()
         {
-            if (!_isInitialized || EventTypeFilter == null || SeverityFilter == null || TimeRangeValue == null || TimeRangeUnit == null)
+            if (!_isInitialized || EventTypeFilter == null || SeverityFilter == null || TimeRangeValue == null || TimeRangeUnit == null || ShowSystemEventsToggle == null)
                 return;
                 
             try
             {
                 var selectedEventType = UIHelper.GetComboBoxItemContent(EventTypeFilter.SelectedItem);
                 var selectedSeverity = UIHelper.GetComboBoxItemContent(SeverityFilter.SelectedItem);
+                bool showSystemEvents = ShowSystemEventsToggle.IsChecked ?? true;
                 
                 if (int.TryParse(TimeRangeValue.Text, out int timeValue))
                 {
@@ -338,6 +344,7 @@ namespace DeskDefender
                         selectedSeverity,
                         timeValue,
                         timeUnit,
+                        showSystemEvents,
                         EventLogList);
                 }
             }

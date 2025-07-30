@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel;
 using System.Text;
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using DeskDefender.Models.Events;
+using static DeskDefender.Models.Events.SeverityLevel;
 
 namespace DeskDefender.Utils
 {
@@ -27,6 +29,14 @@ namespace DeskDefender.Utils
                 EventSeverity.Info => new SolidColorBrush(System.Windows.Media.Colors.LightGray),
                 _ => new SolidColorBrush(System.Windows.Media.Colors.Gray)
             };
+        }
+
+        /// <summary>
+        /// Gets the appropriate color brush for severity levels (SeverityLevel enum)
+        /// </summary>
+        public static SolidColorBrush GetSeverityBrush(SeverityLevel severity)
+        {
+            return new SolidColorBrush(severity.GetSeverityColor());
         }
 
         /// <summary>

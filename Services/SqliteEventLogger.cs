@@ -515,11 +515,19 @@ namespace DeskDefender.Services
                 
                 using var context = _contextFactory.CreateDbContext();
                 
-                // Remove all events
-                context.Events.RemoveRange(context.Events);
+                // Use efficient bulk delete without loading all events into memory
+                await context.Database.ExecuteSqlRawAsync("DELETE FROM Events");
                 
-                // Save changes
-                await context.SaveChangesAsync();
+                // Reset the auto-increment counter (only if sqlite_sequence table exists)
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name='Events'");
+                }
+                catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 1) // SQLITE_ERROR
+                {
+                    // sqlite_sequence table doesn't exist, which is fine - just log and continue
+                    _logger.LogDebug("sqlite_sequence table not found, skipping auto-increment reset");
+                }
                 
                 _logger.LogInformation("All events cleared from database successfully");
             }

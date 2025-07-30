@@ -23,12 +23,14 @@ namespace DeskDefender.Services
         private readonly IEventLogger _eventLogger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly SettingsService _settingsService;
+        private readonly IInputMonitor _inputMonitor;
         
         private System.Threading.Timer _captureTimer;
         private bool _isRunning;
         private bool _disposed;
         private DateTime _lastScreenCapture = DateTime.MinValue;
         private DateTime _lastWebcamCapture = DateTime.MinValue;
+        private DateTime _lastInputActivity = DateTime.MinValue;
         
         // Configuration
         private readonly string _captureDirectory;
@@ -39,7 +41,8 @@ namespace DeskDefender.Services
             IWebcamCaptureService webcamCaptureService,
             IEventLogger eventLogger,
             ISessionMonitor sessionMonitor,
-            SettingsService settingsService)
+            SettingsService settingsService,
+            IInputMonitor inputMonitor)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _screenCaptureService = screenCaptureService ?? throw new ArgumentNullException(nameof(screenCaptureService));
@@ -47,6 +50,10 @@ namespace DeskDefender.Services
             _eventLogger = eventLogger ?? throw new ArgumentNullException(nameof(eventLogger));
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+            _inputMonitor = inputMonitor ?? throw new ArgumentNullException(nameof(inputMonitor));
+            
+            // Subscribe to input activity events
+            _inputMonitor.InputDetected += OnInputActivity;
             
             // Create capture directory
             _captureDirectory = Path.Combine(
@@ -120,6 +127,15 @@ namespace DeskDefender.Services
         }
 
         /// <summary>
+        /// Handle input activity events to track when user is active
+        /// </summary>
+        private void OnInputActivity(object sender, InputEvent e)
+        {
+            _lastInputActivity = DateTime.Now;
+            _logger.LogTrace("Input activity detected at {Time}", _lastInputActivity);
+        }
+
+        /// <summary>
         /// Timer callback for periodic captures
         /// </summary>
         private async void OnCaptureTimer(object state)
@@ -138,12 +154,22 @@ namespace DeskDefender.Services
 
                 var now = DateTime.Now;
                 
-                // Perform screen capture if interval has passed
+                // Perform screen capture if interval has passed AND there's been recent input activity
                 var captureInterval = TimeSpan.FromSeconds(_settingsService.Settings.BatchingIntervalSeconds);
                 if (now - _lastScreenCapture >= captureInterval)
                 {
-                    await PerformScreenCaptureAsync();
-                    _lastScreenCapture = now;
+                    // Only capture screenshot if there's been input activity within the interval
+                    if (_lastInputActivity != DateTime.MinValue && now - _lastInputActivity <= captureInterval)
+                    {
+                        await PerformScreenCaptureAsync();
+                        _lastScreenCapture = now;
+                        _logger.LogDebug("Screen capture taken - recent input activity detected");
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Skipping screen capture - no recent input activity");
+                        _lastScreenCapture = now; // Update timestamp to avoid constant checking
+                    }
                 }
 
                 // Perform webcam capture if interval has passed

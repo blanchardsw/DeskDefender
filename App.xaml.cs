@@ -185,7 +185,10 @@ namespace DeskDefender
                             AppDomain.CurrentDomain.BaseDirectory, 
                             "Data", 
                             "security.db");
-                        options.UseSqlite($"Data Source={databasePath}");
+                        options.UseSqlite($"Data Source={databasePath}")
+                               .EnableSensitiveDataLogging(false) // Disable sensitive data logging
+                               .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ContextInitialized))
+                               .UseLoggerFactory(LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Warning)));
                     });
 
                     // Core Services - Register interfaces with implementations

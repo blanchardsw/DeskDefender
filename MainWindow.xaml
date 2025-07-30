@@ -313,6 +313,13 @@
                                 <ComboBoxItem Content="Low"/>
                             </ComboBox>
                             
+                            <!-- System Events Toggle -->
+                            <CheckBox x:Name="ShowSystemEventsToggle" Content="Show System Events" 
+                                     IsChecked="True" Margin="10,0,15,0" VerticalAlignment="Center"
+                                     Foreground="{DynamicResource PrimaryTextBrush}"
+                                     Checked="ShowSystemEventsToggle_Changed" 
+                                     Unchecked="ShowSystemEventsToggle_Changed"/>
+            
                             <!-- Timestamp Filter -->
                             <TextBlock Text="Last:" VerticalAlignment="Center" Margin="10,0,5,0" Foreground="{DynamicResource PrimaryTextBrush}"/>
                             <TextBox x:Name="TimeRangeValue" Width="40" Text="1" Margin="0,0,5,0" 

@@ -10,6 +10,7 @@ using DeskDefender.Interfaces;
 using DeskDefender.Models.Events;
 using Microsoft.Extensions.Logging;
 
+
 namespace DeskDefender.Controllers
 {
     /// <summary>
@@ -127,38 +128,84 @@ namespace DeskDefender.Controllers
             string? selectedSeverity,
             int timeValue,
             string timeUnit,
+            bool showSystemEvents,
             System.Windows.Controls.ListView eventLogList)
         {
             try
             {
+                _logger.LogDebug("ApplyEventFilters called: EventType='{EventType}', Severity='{Severity}', TimeValue={TimeValue}, TimeUnit='{TimeUnit}', ShowSystemEvents={ShowSystemEvents}", 
+                    selectedEventType, selectedSeverity, timeValue, timeUnit, showSystemEvents);
+                
+                // Determine which filters are actually applied
+                bool hasEventTypeFilter = !string.IsNullOrEmpty(selectedEventType) && 
+                                         selectedEventType != "All" && 
+                                         selectedEventType != "All Events";
+                                         
+                bool hasSeverityFilter = !string.IsNullOrEmpty(selectedSeverity) && 
+                                       selectedSeverity != "All" && 
+                                       selectedSeverity != "All Levels";
+                                       
+                // Time filter is only active if user has changed from default "1" or if it's a meaningful restriction
+                bool hasTimeFilter = timeValue > 0 && (timeValue != 1 || timeUnit != "Hours");
+                
+                // System events filter is active if user has unchecked the toggle
+                bool hasSystemEventsFilter = !showSystemEvents;
+                
+                _logger.LogDebug("Filter detection: EventType={HasEventType}, Severity={HasSeverity}, Time={HasTime}, SystemEvents={HasSystemEvents}", 
+                    hasEventTypeFilter, hasSeverityFilter, hasTimeFilter, hasSystemEventsFilter);
+                
+                // If no filters are applied, show original collection
+                if (!hasEventTypeFilter && !hasSeverityFilter && !hasTimeFilter && !hasSystemEventsFilter)
+                {
+                    eventLogList.ItemsSource = _eventLog;
+                    _logger.LogDebug("No filters applied, showing all {Count} events", _eventLog.Count);
+                    return;
+                }
+                
                 var filteredEvents = _eventLog.AsEnumerable();
                 
                 // Apply timestamp filter
-                var cutoffTime = timeUnit switch
+                if (hasTimeFilter)
                 {
-                    "Minutes" => DateTime.Now.AddMinutes(-timeValue),
-                    "Hours" => DateTime.Now.AddHours(-timeValue),
-                    "Days" => DateTime.Now.AddDays(-timeValue),
-                    _ => DateTime.Now.AddHours(-1)
-                };
-                
-                filteredEvents = filteredEvents.Where(e => e.Timestamp >= cutoffTime);
+                    var cutoffTime = timeUnit switch
+                    {
+                        "Minutes" => DateTime.Now.AddMinutes(-timeValue),
+                        "Hours" => DateTime.Now.AddHours(-timeValue),
+                        "Days" => DateTime.Now.AddDays(-timeValue),
+                        _ => DateTime.Now.AddHours(-1)
+                    };
+                    
+                    filteredEvents = filteredEvents.Where(e => e.Timestamp >= cutoffTime);
+                }
                 
                 // Apply event type filter
-                if (!string.IsNullOrEmpty(selectedEventType) && selectedEventType != "All")
+                if (hasEventTypeFilter)
                 {
-                    filteredEvents = filteredEvents.Where(e => e.EventType == selectedEventType);
+                    var targetEventType = EventTypeExtensions.FromString(selectedEventType);
+                    filteredEvents = filteredEvents.Where(e => 
+                        EventTypeExtensions.FromString(e.EventType) == targetEventType);
                 }
                 
                 // Apply severity filter
-                if (!string.IsNullOrEmpty(selectedSeverity) && selectedSeverity != "All")
+                if (hasSeverityFilter)
+                {
+                    var targetSeverity = SeverityLevelExtensions.FromString(selectedSeverity);
+                    filteredEvents = filteredEvents.Where(e => 
+                        GetSeverityFromBrush(e.SeverityColor) == targetSeverity);
+                }
+                
+                // Apply System events filter (includes System, Background Monitoring, and Session events)
+                if (hasSystemEventsFilter)
                 {
                     filteredEvents = filteredEvents.Where(e => 
-                        GetSeverityFromColor(e.SeverityColor) == selectedSeverity);
+                        !EventTypeExtensions.FromString(e.EventType).IsSystemEvent());
                 }
                 
                 var resultList = filteredEvents.OrderByDescending(e => e.Timestamp).ToList();
-                eventLogList.ItemsSource = resultList;
+                
+                // Create a new ObservableCollection to maintain proper binding
+                var filteredCollection = new ObservableCollection<EventDisplayModel>(resultList);
+                eventLogList.ItemsSource = filteredCollection;
                 
                 _logger.LogDebug("Applied filters: EventType={EventType}, Severity={Severity}, TimeRange={TimeValue} {TimeUnit}, Results={Count}", 
                     selectedEventType, selectedSeverity, timeValue, timeUnit, resultList.Count);
@@ -166,22 +213,29 @@ namespace DeskDefender.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in ApplyEventFilters");
+                // On error, always restore original collection
                 eventLogList.ItemsSource = _eventLog;
             }
         }
 
         /// <summary>
-        /// Helper method to get severity string from color brush
+        /// Helper method to get severity level from color brush
+        /// Uses SeverityLevel enum instead of hard-coded strings
         /// </summary>
-        private string GetSeverityFromColor(System.Windows.Media.Brush brush)
+        private SeverityLevel GetSeverityFromBrush(System.Windows.Media.Brush brush)
         {
-            // This is a simplified implementation - you might want to enhance this
-            var color = ((System.Windows.Media.SolidColorBrush)brush).Color;
-            if (color == System.Windows.Media.Colors.Red) return "Critical";
-            if (color == System.Windows.Media.Colors.Orange) return "High";
-            if (color == System.Windows.Media.Colors.Yellow) return "Medium";
-            if (color == System.Windows.Media.Colors.LightBlue) return "Low";
-            return "Info";
+            if (brush == null) return SeverityLevel.Unknown;
+            
+            try
+            {
+                var color = ((System.Windows.Media.SolidColorBrush)brush).Color;
+                return SeverityLevelExtensions.FromColor(color);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error extracting color from brush for severity filtering");
+                return SeverityLevel.Unknown;
+            }
         }
     }
 }
