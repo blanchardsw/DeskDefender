@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using DeskDefender.Interfaces;
+using DeskDefender.Models.Events;
 using DeskDefender.Models.Settings;
 using Microsoft.Extensions.Logging;
 
@@ -45,7 +46,7 @@ namespace DeskDefender.Windows
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load alert settings");
-                MessageBox.Show($"Failed to load alert settings: {ex.Message}", "Error", 
+                System.Windows.MessageBox.Show($"Failed to load alert settings: {ex.Message}", "Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -97,11 +98,12 @@ namespace DeskDefender.Windows
         /// <summary>
         /// Sets the selected severity in the combo box
         /// </summary>
-        private void SetSelectedSeverity(string severity)
+        private void SetSelectedSeverity(SeverityLevel severity)
         {
+            var severityString = severity.ToString();
             foreach (ComboBoxItem item in MinimumSeverityComboBox.Items)
             {
-                if (item.Tag?.ToString() == severity)
+                if (item.Tag?.ToString() == severityString)
                 {
                     MinimumSeverityComboBox.SelectedItem = item;
                     break;
@@ -112,10 +114,12 @@ namespace DeskDefender.Windows
         /// <summary>
         /// Gets the selected severity from the combo box
         /// </summary>
-        private string GetSelectedSeverity()
+        private SeverityLevel GetSelectedSeverity()
         {
             var selectedItem = MinimumSeverityComboBox.SelectedItem as ComboBoxItem;
-            return selectedItem?.Tag?.ToString() ?? "Medium";
+            var tagString = selectedItem?.Tag?.ToString() ?? "Medium";
+            var severity = SeverityLevelExtensions.FromString(tagString);
+            return severity != SeverityLevel.Unknown ? severity : SeverityLevel.Medium;
         }
 
         /// <summary>
@@ -155,19 +159,19 @@ namespace DeskDefender.Windows
                 
                 if (success)
                 {
-                    MessageBox.Show("Test SMS sent successfully! Check your phone.", "Success", 
+                    System.Windows.MessageBox.Show("Test SMS sent successfully! Check your phone.", "Success", 
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
-                    MessageBox.Show("Failed to send test SMS. Please check your settings and try again.", "Error", 
+                    System.Windows.MessageBox.Show("Failed to send test SMS. Please check your settings and try again.", "Error", 
                         MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send test SMS");
-                MessageBox.Show($"Failed to send test SMS: {ex.Message}", "Error", 
+                System.Windows.MessageBox.Show($"Failed to send test SMS: {ex.Message}", "Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -198,19 +202,19 @@ namespace DeskDefender.Windows
                 
                 if (success)
                 {
-                    MessageBox.Show("Test email sent successfully! Check your inbox.", "Success", 
+                    System.Windows.MessageBox.Show("Test email sent successfully! Check your inbox.", "Success", 
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
-                    MessageBox.Show("Failed to send test email. Please check your settings and try again.", "Error", 
+                    System.Windows.MessageBox.Show("Failed to send test email. Please check your settings and try again.", "Error", 
                         MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send test email");
-                MessageBox.Show($"Failed to send test email: {ex.Message}", "Error", 
+                System.Windows.MessageBox.Show($"Failed to send test email: {ex.Message}", "Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -249,7 +253,7 @@ namespace DeskDefender.Windows
                     await _alertService.StartAsync();
                 }
                 
-                MessageBox.Show("Alert settings saved successfully!", "Success", 
+                System.Windows.MessageBox.Show("Alert settings saved successfully!", "Success", 
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 
                 DialogResult = true;
@@ -258,7 +262,7 @@ namespace DeskDefender.Windows
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to save alert settings");
-                MessageBox.Show($"Failed to save alert settings: {ex.Message}", "Error", 
+                System.Windows.MessageBox.Show($"Failed to save alert settings: {ex.Message}", "Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
@@ -325,7 +329,7 @@ namespace DeskDefender.Windows
             {
                 if (string.IsNullOrWhiteSpace(PhoneNumberTextBox.Text))
                 {
-                    MessageBox.Show("Phone number is required for SMS alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("Phone number is required for SMS alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     PhoneNumberTextBox.Focus();
                     return false;
@@ -333,7 +337,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(TwilioAccountSidTextBox.Text))
                 {
-                    MessageBox.Show("Twilio Account SID is required for SMS alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("Twilio Account SID is required for SMS alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     TwilioAccountSidTextBox.Focus();
                     return false;
@@ -341,7 +345,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(TwilioAuthTokenPasswordBox.Password))
                 {
-                    MessageBox.Show("Twilio Auth Token is required for SMS alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("Twilio Auth Token is required for SMS alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     TwilioAuthTokenPasswordBox.Focus();
                     return false;
@@ -349,7 +353,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(TwilioPhoneNumberTextBox.Text))
                 {
-                    MessageBox.Show("Twilio Phone Number is required for SMS alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("Twilio Phone Number is required for SMS alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     TwilioPhoneNumberTextBox.Focus();
                     return false;
@@ -361,7 +365,7 @@ namespace DeskDefender.Windows
             {
                 if (string.IsNullOrWhiteSpace(EmailAddressTextBox.Text))
                 {
-                    MessageBox.Show("Email address is required for email alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("Email address is required for email alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     EmailAddressTextBox.Focus();
                     return false;
@@ -369,7 +373,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(SmtpServerTextBox.Text))
                 {
-                    MessageBox.Show("SMTP server is required for email alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("SMTP server is required for email alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     SmtpServerTextBox.Focus();
                     return false;
@@ -377,7 +381,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(SmtpUsernameTextBox.Text))
                 {
-                    MessageBox.Show("SMTP username is required for email alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("SMTP username is required for email alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     SmtpUsernameTextBox.Focus();
                     return false;
@@ -385,7 +389,7 @@ namespace DeskDefender.Windows
                 
                 if (string.IsNullOrWhiteSpace(SmtpPasswordPasswordBox.Password))
                 {
-                    MessageBox.Show("SMTP password is required for email alerts.", "Validation Error", 
+                    System.Windows.MessageBox.Show("SMTP password is required for email alerts.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     SmtpPasswordPasswordBox.Focus();
                     return false;
@@ -395,7 +399,7 @@ namespace DeskDefender.Windows
             // Validate max events
             if (!int.TryParse(MaxEventsTextBox.Text, out int maxEvents) || maxEvents < 1 || maxEvents > 100)
             {
-                MessageBox.Show("Maximum events per alert must be a number between 1 and 100.", "Validation Error", 
+                System.Windows.MessageBox.Show("Maximum events per alert must be a number between 1 and 100.", "Validation Error", 
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 MaxEventsTextBox.Focus();
                 return false;
@@ -406,7 +410,7 @@ namespace DeskDefender.Windows
             {
                 if (!int.TryParse(SmtpPortTextBox.Text, out int port) || port < 1 || port > 65535)
                 {
-                    MessageBox.Show("SMTP port must be a number between 1 and 65535.", "Validation Error", 
+                    System.Windows.MessageBox.Show("SMTP port must be a number between 1 and 65535.", "Validation Error", 
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     SmtpPortTextBox.Focus();
                     return false;

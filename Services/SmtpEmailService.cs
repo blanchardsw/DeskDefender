@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using DeskDefender.Interfaces;
 using DeskDefender.Models.Alerts;
+using DeskDefender.Models.Events;
 using DeskDefender.Models.Settings;
 using Microsoft.Extensions.Logging;
 
@@ -249,9 +250,9 @@ namespace DeskDefender.Services
                 {
                     var eventColor = evt.Severity switch
                     {
-                        "Critical" => "#e74c3c",
-                        "High" => "#f39c12",
-                        "Medium" => "#f1c40f",
+                        EventSeverity.Critical => "#e74c3c",
+                        EventSeverity.High => "#f39c12",
+                        EventSeverity.Medium => "#f1c40f",
                         _ => "#3498db"
                     };
 

@@ -34,6 +34,13 @@ namespace DeskDefender.Interfaces
         Task<AlertSummary?> GenerateAlertSummaryAsync(DateTime startTime, DateTime endTime);
 
         /// <summary>
+        /// Sends an immediate alert with a custom message (legacy method for backward compatibility)
+        /// </summary>
+        /// <param name="message">Alert message to send</param>
+        /// <param name="imagePath">Optional image path to include</param>
+        Task SendAlertAsync(string message, string imagePath = null);
+
+        /// <summary>
         /// Sends test alerts to verify SMS and email configuration
         /// </summary>
         /// <returns>True if both test alerts were sent successfully</returns>

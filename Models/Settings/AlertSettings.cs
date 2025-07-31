@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+using DeskDefender.Models.Events;
 
 namespace DeskDefender.Models.Settings
 {
@@ -36,9 +38,10 @@ namespace DeskDefender.Models.Settings
         public int SummaryIntervalMinutes { get; set; } = 60;
 
         /// <summary>
-        /// Minimum severity level for alerts (Critical, High, Medium, Low, Info)
+        /// Minimum severity level for alerts
         /// </summary>
-        public string MinimumAlertSeverity { get; set; } = "Medium";
+        [JsonPropertyName("minimumAlertSeverity")]
+        public SeverityLevel MinimumAlertSeverity { get; set; } = SeverityLevel.Medium;
 
         /// <summary>
         /// Whether to include system events in alert summaries

@@ -246,6 +246,10 @@ namespace DeskDefender
                     services.AddSingleton<ISettingsService, SettingsService>();
                     services.AddSingleton<ISmsService, TwilioSmsService>();
                     services.AddSingleton<IEmailService, SmtpEmailService>();
+                    
+                    // Phase 4: SOLID-compliant Alert Services
+                    services.AddSingleton<IEventAggregationService, EventAggregationService>();
+                    services.AddSingleton<IAlertSchedulingService, AlertSchedulingService>();
                     services.AddSingleton<IAlertService, AlertService>();
                     
                     // Phase 2: Session Lock Detection & Background Monitoring Services

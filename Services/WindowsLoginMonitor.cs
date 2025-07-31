@@ -25,6 +25,10 @@ namespace DeskDefender.Services
         
         // Default Windows Event IDs for login monitoring
         private int[] _monitoredEventIds = { 4624, 4625, 4634, 4647 }; // Logon success, failure, logoff, user-initiated logoff
+        
+        // Event tracking to prevent duplicates
+        private readonly HashSet<string> _processedEventIds = new HashSet<string>();
+        private DateTime _lastProcessedTime = DateTime.MinValue;
 
         #endregion
 
@@ -136,6 +140,10 @@ namespace DeskDefender.Services
                 _isMonitoring = true;
                 StatusChanged?.Invoke(this, true);
                 
+                // Initialize event tracking
+                _processedEventIds.Clear();
+                _lastProcessedTime = DateTime.Now; // Start tracking from now to avoid processing old events
+                
                 _logger.LogInformation("Windows login monitoring started successfully (Admin: {IsAdmin})", isAdmin);
                 
                 // Log the start event
@@ -182,6 +190,10 @@ namespace DeskDefender.Services
 
                 _isMonitoring = false;
                 StatusChanged?.Invoke(this, false);
+                
+                // Clear event tracking
+                _processedEventIds.Clear();
+                _lastProcessedTime = DateTime.MinValue;
                 
                 _logger.LogInformation("Windows login monitoring stopped");
                 
@@ -232,9 +244,41 @@ namespace DeskDefender.Services
                 if (!_monitoredEventIds.Contains((int)entry.InstanceId))
                     return;
 
+                // Create a unique identifier for this event to prevent duplicates
+                var eventId = $"{entry.InstanceId}_{entry.TimeGenerated:yyyyMMddHHmmssfff}_{entry.Index}";
+                
+                // Check if we've already processed this event
+                if (_processedEventIds.Contains(eventId))
+                {
+                    _logger.LogDebug("Skipping duplicate login event: {EventId}", eventId);
+                    return;
+                }
+                
+                // Check if this event is older than our last processed time (prevents processing old events)
+                if (entry.TimeGenerated <= _lastProcessedTime)
+                {
+                    _logger.LogDebug("Skipping old login event: {Timestamp} <= {LastProcessed}", 
+                        entry.TimeGenerated, _lastProcessedTime);
+                    return;
+                }
+
                 var loginEvent = ParseLoginEvent(entry);
                 if (loginEvent != null)
                 {
+                    // Mark this event as processed
+                    _processedEventIds.Add(eventId);
+                    _lastProcessedTime = entry.TimeGenerated;
+                    
+                    // Clean up old processed event IDs to prevent memory growth (keep last 1000)
+                    if (_processedEventIds.Count > 1000)
+                    {
+                        var oldestEvents = _processedEventIds.Take(_processedEventIds.Count - 500).ToList();
+                        foreach (var oldEvent in oldestEvents)
+                        {
+                            _processedEventIds.Remove(oldEvent);
+                        }
+                    }
+                    
                     _logger.LogInformation("Login event detected: {Success} for user {Username} at {Timestamp}", 
                         loginEvent.Success ? "Success" : "Failure", loginEvent.Username, loginEvent.Timestamp);
 
